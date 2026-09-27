@@ -1,0 +1,6 @@
+{
+  "name": "蛍光灯→LED切替 事前調査 電話ヒアリング マニュアル & チェックシート",
+  "description": "蛍光灯からLEDへの切替事前調査における電話ヒアリングトークスクリプト、Yes/No分岐フロー、および調査要否判定・ヒアリング記録チェックシートツール。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

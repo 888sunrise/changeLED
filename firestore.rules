@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /hearing_records/{recordId} {
+      allow read: if isValidId(recordId);
+      allow create: if isValidId(recordId) 
+                    && request.resource.data.storeName is string 
+                    && request.resource.data.storeName.size() > 0
+                    && request.resource.data.storeName.size() <= 200;
+      allow update: if isValidId(recordId);
+      allow delete: if isValidId(recordId);
+    }
+  }
+}
