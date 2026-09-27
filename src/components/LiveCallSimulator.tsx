@@ -708,9 +708,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     />
                   </div>
 
-                  <div className="bg-white p-3 rounded-lg border border-blue-200 text-xs text-slate-800 leading-relaxed">
-                    <span className="font-bold text-blue-900">調査案内トーク：</span><br />
-                    「状況を教えていただきありがとうございます。正確な灯具の規格や設置本数を確認させていただき、最適な器具選定とお見積もりをご案内するため、弊社の専門技術員が現地へ事前調査にお伺いさせていただきます。」
+                  <div className="bg-white p-3 rounded-lg border border-blue-200 text-xs sm:text-sm text-slate-800 leading-relaxed shadow-xs">
+                    <span className="font-bold text-blue-900 block mb-1">
+                      【一部未LED・未着手の場合のトーク（★訪問調査手配へ進む）】：
+                    </span>
+                    「状況を教えていただきありがとうございます。まだ一部に蛍光灯が残っていらっしゃる（または未着手の）状態ですね。承知いたしました。<br />
+                    正確な灯具の規格や設置本数を確認させていただき、最適なLED器具の選定するため、現地へ事前調査にお伺いさせていただきます。」
                   </div>
 
                   <div className="flex justify-end pt-1">
@@ -869,8 +872,8 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
               </div>
 
               {/* Automatic Determination Result Card */}
-              <div className="p-4 rounded-xl border-2 border-slate-300 bg-white">
-                <div className="text-xs font-semibold text-slate-500 mb-2">自動判定された区分：</div>
+              <div className="p-4 rounded-xl border-2 border-slate-300 bg-white space-y-3">
+                <div className="text-xs font-semibold text-slate-500">自動判定された区分：</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div
                     onClick={() => setManualCategory('builtin')}
@@ -911,6 +914,19 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     <div className="text-[11px] text-slate-500 mt-0.5">独立路面店・駐車場灯有</div>
                   </div>
                 </div>
+
+                {/* Confirmation Script */}
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-700">受答え・共有トーク</span>
+                    <span className="text-[11px] text-blue-600 font-semibold">
+                      選択中：{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white p-2.5 rounded border border-slate-200 shadow-2xs">
+                    「ご回答ありがとうございます。店舗様は<strong className="text-blue-700">［{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}］</strong>形式の設備構成ですね。調査員に共有させていただきます。」
+                  </p>
+                </div>
               </div>
 
               {/* Navigation */}
@@ -946,13 +962,25 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
             <div className="p-5 space-y-5">
               {/* Script Prompt */}
               <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2">
-                <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
-                  発話スクリプト（日程伺い）
-                </span>
-                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
+                    発話スクリプト（日程伺い）
+                  </span>
+                  <span className="text-xs text-blue-700 font-medium">所要時間: 30分〜45分程度</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
                   「それでは、現地の事前調査にお伺いする日程を調整させていただきたく存じます。調査はおよそ30分から45分程度で完了いたします。<br />
-                  来週以降で、店長様や設備ご担当者様が立ち会っていただけるご都合の良い日時はございますでしょうか？」
+                  来週以降で、ご都合の良い日時はございますでしょうか？」
                 </p>
+                {/* Free of charge notice banner / script */}
+                <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 flex items-start gap-2">
+                  <span className="text-xs font-bold bg-amber-600 text-white px-1.5 py-0.5 rounded shrink-0 mt-0.5">
+                    費用案内・安心トーク
+                  </span>
+                  <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed">
+                    「ご安心ください。今回の事前調査【完全無料】となっております。どうぞご安心ください。」
+                  </p>
+                </div>
               </div>
 
               {/* Scheduling Inputs */}

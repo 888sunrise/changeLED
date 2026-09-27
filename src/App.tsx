@@ -162,7 +162,7 @@ export default function App() {
       />
 
       {/* Sync Status Banner */}
-      <div className="bg-white/90 border-b border-slate-200 px-4 py-1.5 text-xs">
+      <div id="top-sync-banner" className="bg-white/90 border-b border-slate-200 px-4 py-1.5 text-xs print:hidden">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             {syncStatus === 'connected' ? (
