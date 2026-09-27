@@ -23,21 +23,46 @@ import {
   ArrowRight,
   Save,
 } from 'lucide-react';
-import { HearingRecord, LedStatus, LocationCategory, TimeSlot, KeyCustodyStatus } from '../types/hearing';
+import { HearingRecord, LedStatus, SimulatorLocationCategory, TimeSlot, KeyCustodyStatus, StoreRecord } from '../types/hearing';
 
 interface LiveCallSimulatorProps {
   onSaveRecord: (record: HearingRecord) => void;
   onGoToChecksheet: () => void;
+  stores?: StoreRecord[];
+  initialStore?: StoreRecord | null;
+  onUpdateStoreField?: (storeNo: number, field: keyof StoreRecord, value: any) => void;
 }
 
-export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveRecord, onGoToChecksheet }) => {
+export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
+  onSaveRecord,
+  onGoToChecksheet,
+  stores = [],
+  initialStore = null,
+  onUpdateStoreField,
+}) => {
+  // Selected Store from master
+  const [selectedStoreNo, setSelectedStoreNo] = useState<number | null>(initialStore ? initialStore.no : null);
+
   // Form State
   const [operatorName, setOperatorName] = useState('山田 太郎');
-  const [storeName, setStoreName] = useState('');
-  const [storeId, setStoreId] = useState('');
+  const [storeName, setStoreName] = useState(initialStore ? initialStore.storeName : '');
+  const [storeId, setStoreId] = useState(initialStore ? initialStore.storeCode : '');
   const [contactPerson, setContactPerson] = useState('');
   const [contactRole, setContactRole] = useState('店長');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState(initialStore ? initialStore.storeMobile : '');
+
+  // Keep synced if initialStore changes
+  React.useEffect(() => {
+    if (initialStore) {
+      setSelectedStoreNo(initialStore.no);
+      setStoreName(initialStore.storeName);
+      setStoreId(initialStore.storeCode);
+      setPhoneNumber(initialStore.storeMobile);
+      if (initialStore.category === 'ビルイン') setManualCategory('builtin');
+      else if (initialStore.category === 'フードコート') setManualCategory('foodcourt');
+      else if (initialStore.category === 'フリスタ') setManualCategory('freesta');
+    }
+  }, [initialStore]);
 
   // Step 2: LED Status
   const [ledStatus, setLedStatus] = useState<LedStatus | null>(null);
@@ -47,7 +72,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
   const [isTenantInBuilding, setIsTenantInBuilding] = useState<boolean | null>(null);
   const [isCounterOnly, setIsCounterOnly] = useState<boolean | null>(null);
   const [hasDedicatedParkingLights, setHasDedicatedParkingLights] = useState<boolean | null>(null);
-  const [manualCategory, setManualCategory] = useState<LocationCategory | null>(null);
+  const [manualCategory, setManualCategory] = useState<SimulatorLocationCategory | null>(null);
 
   // Step 4: Scheduling
   const [preferredDate1, setPreferredDate1] = useState('');
@@ -70,7 +95,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Determine computed location category
-  const getComputedCategory = (): LocationCategory => {
+  const getComputedCategory = (): SimulatorLocationCategory => {
     if (manualCategory) return manualCategory;
     if (isCounterOnly === true) return 'foodcourt';
     if (hasDedicatedParkingLights === true || isTenantInBuilding === false) return 'freesta';
@@ -207,6 +232,38 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
     };
 
     onSaveRecord(record);
+
+    // If associated with a master store record, update its fields
+    if (selectedStoreNo && onUpdateStoreField) {
+      const catJpn =
+        computedCategory === 'builtin'
+          ? 'ビルイン'
+          : computedCategory === 'foodcourt'
+          ? 'フードコート'
+          : computedCategory === 'freesta'
+          ? 'フリスタ'
+          : '未設定';
+
+      onUpdateStoreField(selectedStoreNo, 'category', catJpn);
+      onUpdateStoreField(selectedStoreNo, 'phoneStatus', '完了');
+      if (ledStatus === 'all_led') {
+        onUpdateStoreField(selectedStoreNo, 'remarks1', '全灯LED済み（訪問調査不要）');
+        onUpdateStoreField(selectedStoreNo, 'surveyDocCollection', '不要');
+        onUpdateStoreField(selectedStoreNo, 'replacementRequest', '対象外');
+        onUpdateStoreField(selectedStoreNo, 'itemOrdering', '完了');
+        onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
+        onUpdateStoreField(selectedStoreNo, 'completion', '完了');
+      } else {
+        onUpdateStoreField(selectedStoreNo, 'remarks1', partialAreas || '一部未LED(蛍光灯有)');
+        if (preferredDate1) {
+          onUpdateStoreField(selectedStoreNo, 'surveyDate', preferredDate1);
+        }
+        onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
+        onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
+        onUpdateStoreField(selectedStoreNo, 'completion', '未完了');
+      }
+    }
+
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
   };
@@ -313,42 +370,91 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
             </div>
 
             <div className="p-5 space-y-5">
+              {/* Master Store Selector if stores prop provided */}
+              {stores.length > 0 && (
+                <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <span>店舗マスタ（A〜I列）から対象店舗を選択：</span>
+                    </label>
+                    <span className="text-[11px] text-blue-700 font-mono">
+                      全{stores.length}店舗登録済み
+                    </span>
+                  </div>
+                  <select
+                    value={selectedStoreNo || ''}
+                    onChange={(e) => {
+                      const no = Number(e.target.value);
+                      setSelectedStoreNo(no);
+                      const target = stores.find((s) => s.no === no);
+                      if (target) {
+                        setStoreName(target.storeName);
+                        setStoreId(target.storeCode);
+                        setPhoneNumber(target.storeMobile);
+                        if (target.category === 'ビルイン') setManualCategory('builtin');
+                        else if (target.category === 'フードコート') setManualCategory('foodcourt');
+                        else if (target.category === 'フリスタ') setManualCategory('freesta');
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium text-slate-800"
+                  >
+                    <option value="">-- 対象店舗を選択してください（店番・店名） --</option>
+                    {stores.map((s) => (
+                      <option key={s.no} value={s.no}>
+                        NO.{s.no} | 店番: {s.storeCode} | {s.storeName} ({s.address1}) [TEL: {s.storeMobile}] [{s.managementType}]
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Form Input Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    店舗名 <span className="text-rose-500">*</span>
+                    店舗名（D列：入力禁止マスタ連動） <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     placeholder="例: 和食処 桜坂 渋谷道玄坂店"
                     value={storeName}
+                    readOnly={Boolean(selectedStoreNo)}
                     onChange={(e) => setStoreName(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    className={`w-full px-3 py-2 text-xs rounded-lg focus:outline-hidden ${
+                      selectedStoreNo ? 'bg-slate-100 border border-slate-200 text-slate-700 font-bold' : 'bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500'
+                    }`}
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    店舗番号 / 管理ID
+                    店番（B列）
                   </label>
                   <input
                     type="text"
-                    placeholder="例: SHIBUYA-042"
+                    placeholder="例: 112003"
                     value={storeId}
+                    readOnly={Boolean(selectedStoreNo)}
                     onChange={(e) => setStoreId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    className={`w-full px-3 py-2 text-xs rounded-lg focus:outline-hidden ${
+                      selectedStoreNo ? 'bg-slate-100 border border-slate-200 text-slate-700 font-mono' : 'bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">電話番号</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    店舗携帯番号（H列：架電先）
+                  </label>
                   <input
                     type="tel"
-                    placeholder="例: 03-1234-5678"
+                    placeholder="例: 080-4601-3074"
                     value={phoneNumber}
+                    readOnly={Boolean(selectedStoreNo)}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    className={`w-full px-3 py-2 text-xs rounded-lg focus:outline-hidden ${
+                      selectedStoreNo ? 'bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold' : 'bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500'
+                    }`}
                   />
                 </div>
 
@@ -393,17 +499,32 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
                 </div>
               </div>
 
-              {/* Script Bubble */}
+              {/* Script Bubble 1: First Contact / Opening */}
               <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
-                    発話スクリプト（挨拶・趣旨説明）
+                    発話スクリプト①（受付・担当者呼出）
                   </span>
-                  <span className="text-xs text-blue-700 font-medium">所要時間: 2〜3分の提示</span>
+                  <span className="text-xs text-blue-700 font-medium">委託元の明示</span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
-                  「お忙しいところ恐れ入ります。私、〇〇本部照明設備担当の［{operatorName || '〇〇'}］と申します。店長様、もしくは設備ご担当者様はいらっしゃいますでしょうか？<br />
-                  ……お電話代わっていただきありがとうございます。本日は、全社的な電気代削減と環境対策の一環として進めております『蛍光灯からLED照明への切替事前調査』の件でご連絡いたしました。2〜3分ほどお時間をいただき、現在の店舗様の照明状況を確認させていただけますでしょうか？」
+                  「お忙しいところ恐れ入ります。<br />
+                  私、［{operatorName || '自社名・氏名'}］と申します。<br /><br />
+                  貴社本部様より委託を受けまして、店舗様のLED照明に関するご連絡をさせていただきました。<br />
+                  店長様、もしくは設備のご担当者様はお手すきでしょうか？」
+                </p>
+              </div>
+
+              {/* Script Bubble 2: Purpose & Time Consent */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-0.5 rounded">
+                    発話スクリプト②（趣旨説明・所要時間確認）
+                  </span>
+                  <span className="text-xs text-emerald-700 font-medium">所要時間: 2〜3分でお電話にて完了</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-emerald-100 shadow-xs">
+                  「LED照明切替に伴う事前調査について、現在の設置状況を確認させていただきたくお電話いたしました。2〜3分ほどでお電話にて完了いたしますが、今少しだけお時間よろしいでしょうか？」
                 </p>
               </div>
 
@@ -622,11 +743,14 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({ onSaveReco
             <div className="p-5 space-y-5">
               {/* Natural Script Guidance */}
               <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2">
-                <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
-                  自然なヒアリングトーク
-                </span>
-                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
-                  「調査員の機材準備や点検手順を確認するため、店舗様の建物形態について2点ほどお伺いさせてください。」
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
+                    発話スクリプト（建物形態の確認導入）
+                  </span>
+                  <span className="text-xs text-blue-700 font-medium">設置場所区分（K列）判定用</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
+                  「事前調査の手配にあたり、店舗様の建物の形態について2点ほどお伺いいたします。」
                 </p>
               </div>
 

@@ -4,15 +4,21 @@
  */
 
 import React from 'react';
-import { PhoneCall, BookOpen, GitFork, ClipboardCheck, PlusCircle } from 'lucide-react';
+import { Table, PhoneCall, BookOpen, GitFork, ClipboardCheck } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'simulator' | 'scripts' | 'flowchart' | 'checksheet';
-  setActiveTab: (tab: 'simulator' | 'scripts' | 'flowchart' | 'checksheet') => void;
+  activeTab: 'ledger' | 'simulator' | 'scripts' | 'flowchart' | 'checksheet';
+  setActiveTab: (tab: 'ledger' | 'simulator' | 'scripts' | 'flowchart' | 'checksheet') => void;
   onNewCall: () => void;
+  selectedStoreName?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onNewCall }) => {
+export const Header: React.FC<HeaderProps> = ({
+  activeTab,
+  setActiveTab,
+  onNewCall,
+  selectedStoreName,
+}) => {
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -26,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onNewCa
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                setActiveTab('simulator');
+                setActiveTab('ledger');
               }}
               className="text-base sm:text-lg font-bold tracking-tight text-slate-900 hover:text-blue-700 transition-colors"
             >
@@ -34,8 +40,20 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onNewCa
             </a>
           </div>
 
-          {/* Zone 2: Clean text navigation links */}
-          <nav className="hidden md:flex items-center gap-1 sm:gap-2">
+          {/* Zone 2: Navigation Tabs */}
+          <nav className="hidden lg:flex items-center gap-1 sm:gap-2">
+            <button
+              onClick={() => setActiveTab('ledger')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                activeTab === 'ledger'
+                  ? 'bg-blue-50 text-blue-700 font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Table className="w-4 h-4 text-blue-600" />
+              <span>A〜T列 店舗進捗台帳</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('simulator')}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
@@ -45,7 +63,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onNewCa
               }`}
             >
               <PhoneCall className="w-4 h-4" />
-              <span>通話ナビ（実務モード）</span>
+              <span>通話ナビ（ヒアリング）</span>
+              {selectedStoreName && (
+                <span className="text-[11px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold">
+                  {selectedStoreName}
+                </span>
+              )}
             </button>
 
             <button
@@ -81,18 +104,18 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onNewCa
               }`}
             >
               <ClipboardCheck className="w-4 h-4" />
-              <span>チェックシート・記録</span>
+              <span>記録カルテ</span>
             </button>
           </nav>
 
-          {/* Zone 3: Primary action button */}
+          {/* Zone 3: Quick Action */}
           <div className="flex items-center gap-2">
             <button
               onClick={onNewCall}
               className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-xs whitespace-nowrap"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>新規ヒアリング開始</span>
+              <PhoneCall className="w-4 h-4" />
+              <span>通話ナビを開始</span>
             </button>
           </div>
         </div>
