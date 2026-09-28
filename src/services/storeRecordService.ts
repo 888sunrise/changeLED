@@ -19,7 +19,7 @@ import { INITIAL_STORE_RECORDS } from '../data/sampleStores';
 const COLLECTION_NAME = 'stores_led_records';
 
 /**
- * リアルタイムで店舗レコード（A〜T列）の変更を購読する
+ * リアルタイムで店舗レコード（A〜U列）の変更を購読する
  */
 export function subscribeStoreRecords(
   onData: (records: StoreRecord[]) => void,
@@ -30,9 +30,9 @@ export function subscribeStoreRecords(
     return onSnapshot(
       q,
       (snapshot) => {
-        if (snapshot.empty) {
-          // 初期シードデータが存在しない場合はサンプルデータを保存
-          seedInitialStoreRecordsIfEmpty();
+        if (snapshot.empty || snapshot.size <= 27) {
+          // 旧27店舗データまたは空の場合は173店舗新データへ自動更新・再シード
+          resetAllStoreRecords().catch((e) => console.warn('Seed 173 stores note:', e));
           onData(INITIAL_STORE_RECORDS);
           return;
         }
@@ -59,15 +59,13 @@ export function subscribeStoreRecords(
 }
 
 /**
- * 初期27店舗データ投入（空の場合のみ）
+ * 初期173店舗データ投入（空または旧27店舗の場合）
  */
 export async function seedInitialStoreRecordsIfEmpty(force = false) {
   try {
     const snap = await getDocs(collection(db, COLLECTION_NAME));
-    if (snap.empty || force) {
-      for (const rec of INITIAL_STORE_RECORDS) {
-        await setDoc(doc(db, COLLECTION_NAME, `store_${rec.no}`), rec);
-      }
+    if (snap.empty || snap.size <= 27 || force) {
+      await resetAllStoreRecords();
     }
   } catch (e) {
     console.warn('Initial store seeding note:', e);
@@ -75,7 +73,7 @@ export async function seedInitialStoreRecordsIfEmpty(force = false) {
 }
 
 /**
- * 店舗レコードの更新（J〜T列編集保存）
+ * 店舗レコードの更新（J〜U列編集保存）
  */
 export async function updateStoreRecordInFirestore(record: StoreRecord): Promise<void> {
   const docRef = doc(db, COLLECTION_NAME, `store_${record.no}`);
@@ -83,10 +81,23 @@ export async function updateStoreRecordInFirestore(record: StoreRecord): Promise
 }
 
 /**
- * 一括リセットまたは再シード
+ * 旧27店舗データを全削除し、全173店舗データを一括投入
  */
 export async function resetAllStoreRecords(): Promise<void> {
-  for (const rec of INITIAL_STORE_RECORDS) {
-    await setDoc(doc(db, COLLECTION_NAME, `store_${rec.no}`), rec);
+  try {
+    const snap = await getDocs(collection(db, COLLECTION_NAME));
+    const deletePromises = snap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
+
+    // 173店舗を50件ずつバッチ書き込み
+    const chunkSize = 50;
+    for (let i = 0; i < INITIAL_STORE_RECORDS.length; i += chunkSize) {
+      const chunk = INITIAL_STORE_RECORDS.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map((rec) => setDoc(doc(db, COLLECTION_NAME, `store_${rec.no}`), rec))
+      );
+    }
+  } catch (err) {
+    console.error('Failed to reset all store records in Firestore:', err);
   }
 }

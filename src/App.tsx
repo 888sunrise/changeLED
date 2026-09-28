@@ -27,16 +27,21 @@ import {
 import { AlertCircle } from 'lucide-react';
 
 const STORAGE_KEY = 'led_hearing_records_v1';
-const STORE_STORAGE_KEY = 'led_stores_records_v1';
+const STORE_STORAGE_KEY = 'led_stores_records_v2';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'simulator' | 'flowchart' | 'scripts' | 'checksheet'>('ledger');
 
-  // Stores (A〜T columns)
+  // Stores (A〜U columns)
   const [stores, setStores] = useState<StoreRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORE_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 27) {
+          return parsed;
+        }
+      }
     } catch {}
     return INITIAL_STORE_RECORDS;
   });
@@ -168,7 +173,7 @@ export default function App() {
             {syncStatus === 'connected' ? (
               <span className="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Cloud Firestore連携中（全27店舗マスタ・ヒアリング記録リアルタイム同期中）</span>
+                <span>Cloud Firestore連携中（全173店舗マスタ・ヒアリング記録リアルタイム同期中）</span>
               </span>
             ) : syncStatus === 'syncing' ? (
               <span className="inline-flex items-center gap-1.5 text-blue-600 font-medium">
@@ -232,10 +237,10 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div>
-            蛍光灯→LED切替 事前調査ヒアリングCRM（全27店舗マスタ A〜T列対応）
+            蛍光灯→LED切替 事前調査ヒアリングCRM（全173店舗マスタ A〜U列対応）
           </div>
           <div className="text-slate-400">
-            A〜I列: 入力禁止（マスタ） / J〜T列: インライン入力・選択 / Firebase Firestore 永続同期
+            A〜I列: 入力禁止（マスタ） / J〜U列: インライン入力・選択 / Firebase Firestore 永続同期
           </div>
         </div>
       </footer>

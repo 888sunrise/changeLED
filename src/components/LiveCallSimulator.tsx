@@ -485,7 +485,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     <option value="">-- 対象店舗を選択してください（店番・店名） --</option>
                     {stores.map((s) => (
                       <option key={s.no} value={s.no}>
-                        NO.{s.no} | 店番: {s.storeCode} | {s.storeName} ({s.address1}) [TEL: {s.storeMobile}] [{s.managementType}]
+                        NO.{s.no} | 店番: {s.storeCode} | {s.storeName} ({s.address1}) [TEL: {s.storeMobile}] [{s.managementType}]{s.hasDrawing === '○' ? ' [図面○]' : ''}
                       </option>
                     ))}
                   </select>

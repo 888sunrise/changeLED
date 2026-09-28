@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <Table className="w-4 h-4 text-blue-600" />
-              <span>A〜T列 店舗進捗台帳</span>
+              <span>A〜U列 店舗進捗台帳</span>
             </button>
 
             <button

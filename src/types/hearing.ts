@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// A〜T列定義に合わせたStoreRecordインターフェース
+// A〜U列定義に合わせたStoreRecordインターフェース
 // A〜I列: 入力禁止（マスタ情報）
-// J〜T列: 入力および選択方式（ヒアリング・業務進捗入力）
+// J〜U列: 入力および選択方式（ヒアリング・業務進捗入力）
 
 export type LocationCategory = 'ビルイン' | 'フードコート' | 'ロードサイド' | 'フリスタ' | '未設定' | string;
 
@@ -33,18 +33,19 @@ export interface StoreRecord {
   storeMobile: string;              // H: 店舗携帯番号
   managementType: string;           // I: 運営（直営 / 社員FC / FC 等）
 
-  // J〜T列（入力および選択方式）
+  // J〜U列（入力および選択方式）
   remarks1: string;                 // J: 備考欄1 (例: "LED,キッチン不明", "LED済み" 等)
   category: LocationCategory;       // K: カテゴリ（ビルイン / フードコート / ロードサイド）
-  phoneStatus: PhoneStatus;         // L: 電話（未架電 / 完了 / 不在 / 通話中 等）
-  surveyAssignee: string;           // M: 調査担当
-  surveyDate: string;               // N: 調査日（YYYY-MM-DD 等）
-  surveyDocCollection: SurveyDocStatus; // O: 調査資料回収（未回収 / 回収済 / 不要）
-  replacementRequest: ReplaceRequestStatus; // P: 置き換え依頼（未依頼 / 依頼済 / 対象外）
-  itemOrdering: ItemOrderStatus;    // Q: 商品手配（未手配 / 手配済 / 完了）
-  workAssignee: string;             // R: 作業担当
-  scheduleNotice: ScheduleNoticeStatus; // S: 日程連絡（未連絡 / 連絡済）
-  completion: CompletionStatus;     // T: 完了（未完了 / 完了 / 保留）
+  hasDrawing: string;               // L: 図面有無（"○" または ""）
+  phoneStatus: PhoneStatus;         // M: 電話（未架電 / 完了 / 不在 / 通話中 等）
+  surveyAssignee: string;           // N: 調査担当
+  surveyDate: string;               // O: 調査日（YYYY-MM-DD 等）
+  surveyDocCollection: SurveyDocStatus; // P: 調査資料回収（未回収 / 回収済 / 不要）
+  replacementRequest: ReplaceRequestStatus; // Q: 置き換え依頼（未依頼 / 依頼済 / 対象外）
+  itemOrdering: ItemOrderStatus;    // R: 商品手配（未手配 / 手配済 / 完了）
+  workAssignee: string;             // S: 作業担当
+  scheduleNotice: ScheduleNoticeStatus; // T: 日程連絡（未連絡 / 連絡済）
+  completion: CompletionStatus;     // U: 完了（未完了 / 完了 / 保留）
 
   // システム用管理フィールド
   updatedAt?: string;

@@ -40,6 +40,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterHasDrawing, setFilterHasDrawing] = useState<string>('all');
   const [filterPhoneStatus, setFilterPhoneStatus] = useState<string>('all');
   const [filterCompletion, setFilterCompletion] = useState<string>('all');
   const [editingStoreNo, setEditingStoreNo] = useState<number | null>(null);
@@ -49,6 +50,10 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   // Filter logic
   const filteredRecords = records.filter((r) => {
     if (filterCategory !== 'all' && r.category !== filterCategory) return false;
+    if (filterHasDrawing !== 'all') {
+      if (filterHasDrawing === '○' && r.hasDrawing !== '○') return false;
+      if (filterHasDrawing === 'none' && r.hasDrawing === '○') return false;
+    }
     if (filterPhoneStatus !== 'all' && r.phoneStatus !== filterPhoneStatus) return false;
     if (filterCompletion !== 'all' && r.completion !== filterCompletion) return false;
     if (!searchQuery.trim()) return true;
@@ -94,7 +99,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     setEditFormData(null);
   };
 
-  // Export CSV exactly in format A〜T
+  // Export CSV exactly in format A〜U
   const handleExportCSV = () => {
     const headers = [
       'NO',
@@ -108,6 +113,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       '運営',
       '備考欄1',
       'カテゴリ',
+      '図面有無',
       '電話',
       '調査担当',
       '調査日',
@@ -131,6 +137,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       `"${r.managementType}"`,
       `"${(r.remarks1 || '').replace(/"/g, '""')}"`,
       `"${r.category}"`,
+      `"${r.hasDrawing || ''}"`,
       `"${r.phoneStatus}"`,
       `"${r.surveyAssignee}"`,
       `"${r.surveyDate}"`,
@@ -147,7 +154,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `LED切替調査台帳_A-T列_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `LED切替調査台帳_A-U列_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -155,17 +162,18 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
 
   const fieldLabel = (f: keyof StoreRecord): string => {
     const map: Record<string, string> = {
-      remarks1: '備考欄1',
-      category: 'カテゴリ',
-      phoneStatus: '電話',
-      surveyAssignee: '調査担当',
-      surveyDate: '調査日',
-      surveyDocCollection: '調査資料回収',
-      replacementRequest: '置き換え依頼',
-      itemOrdering: '商品手配',
-      workAssignee: '作業担当',
-      scheduleNotice: '日程連絡',
-      completion: '完了',
+      remarks1: '備考欄1 (J)',
+      category: 'カテゴリ (K)',
+      hasDrawing: '図面有無 (L)',
+      phoneStatus: '電話 (M)',
+      surveyAssignee: '調査担当 (N)',
+      surveyDate: '調査日 (O)',
+      surveyDocCollection: '調査資料回収 (P)',
+      replacementRequest: '置き換え依頼 (Q)',
+      itemOrdering: '商品手配 (R)',
+      workAssignee: '作業担当 (S)',
+      scheduleNotice: '日程連絡 (T)',
+      completion: '完了 (U)',
     };
     return map[f] || String(f);
   };
@@ -174,6 +182,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   const totalStores = records.length;
   const completedCount = records.filter((r) => r.completion === '完了').length;
   const phonedCount = records.filter((r) => r.phoneStatus === '完了').length;
+  const drawingCount = records.filter((r) => r.hasDrawing === '○').length;
 
   return (
     <div className="space-y-5 pb-16">
@@ -191,27 +200,30 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-lg text-slate-900">
-                店舗調査・進捗管理台帳（A〜T列 統合CRM）
+                店舗調査・進捗管理台帳（A〜U列 統合CRM）
               </span>
               <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded">
-                27店舗マスタ連動
+                173店舗マスタ連動
               </span>
             </div>
             <p className="text-xs text-slate-600 mt-1">
               <strong>A〜I列（薄グレー背景）</strong>はマスタ情報のため<span className="text-rose-600 font-semibold">入力禁止（閲覧・架電専用）</span>、
-              <strong>J〜T列（白背景）</strong>はヒアリング後の<span className="text-blue-700 font-semibold">インライン編集・選択入力</span>が可能です。
+              <strong>J〜U列（白背景）</strong>はヒアリング後の<span className="text-blue-700 font-semibold">インライン編集・選択入力</span>が可能です。
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
-              <span className="text-slate-500">全体進捗:</span>
+              <span className="text-slate-500">全体:</span>
               <span className="font-bold text-slate-900">{totalStores}店舗</span>
               <span className="text-slate-300">|</span>
-              <span className="text-slate-500">架電完了:</span>
+              <span className="text-slate-500">図面あり(L):</span>
+              <span className="font-bold text-indigo-600">{drawingCount}件</span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-500">架電完了(M):</span>
               <span className="font-bold text-blue-600">{phonedCount}件</span>
               <span className="text-slate-300">|</span>
-              <span className="text-slate-500">全工程完了:</span>
+              <span className="text-slate-500">全工程完了(U):</span>
               <span className="font-bold text-emerald-600">{completedCount}件</span>
             </div>
 
@@ -220,7 +232,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 shadow-xs whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>A〜T列 CSV出力</span>
+              <span>A〜U列 CSV出力</span>
             </button>
           </div>
         </div>
@@ -245,9 +257,23 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             </select>
           </div>
 
+          {/* Drawing Availability Filter */}
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-slate-500">図面有無(L):</span>
+            <select
+              value={filterHasDrawing}
+              onChange={(e) => setFilterHasDrawing(e.target.value)}
+              className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden font-medium"
+            >
+              <option value="all">すべて</option>
+              <option value="○">○ (図面あり)</option>
+              <option value="none">- (未登録/なし)</option>
+            </select>
+          </div>
+
           {/* Phone Status Filter */}
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-slate-500">電話(L):</span>
+            <span className="text-slate-500">電話(M):</span>
             <select
               value={filterPhoneStatus}
               onChange={(e) => setFilterPhoneStatus(e.target.value)}
@@ -263,7 +289,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
 
           {/* Completion Status Filter */}
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-slate-500">完了(T):</span>
+            <span className="text-slate-500">完了(U):</span>
             <select
               value={filterCompletion}
               onChange={(e) => setFilterCompletion(e.target.value)}
@@ -346,39 +372,42 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                   架電
                 </th>
 
-                {/* J to T */}
+                {/* J to U */}
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap min-w-40">
                   J: 備考欄1
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-32">
                   K: カテゴリ
                 </th>
-                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  L: 電話
+                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-24 text-center">
+                  L: 図面有無
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  M: 調査担当
+                  M: 電話
+                </th>
+                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
+                  N: 調査担当
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-32">
-                  N: 調査日
+                  O: 調査日
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  O: 調査資料回収
+                  P: 調査資料回収
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  P: 置き換え依頼
+                  Q: 置き換え依頼
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  Q: 商品手配
+                  R: 商品手配
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  R: 作業担当
+                  S: 作業担当
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  S: 日程連絡
+                  T: 日程連絡
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28 text-center">
-                  T: 完了
+                  U: 完了
                 </th>
               </tr>
             </thead>
@@ -386,7 +415,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={21} className="py-12 text-center text-slate-400">
+                  <td colSpan={22} className="py-12 text-center text-slate-400">
                     条件に一致する店舗データがありません。
                   </td>
                 </tr>
@@ -506,7 +535,23 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* L: 電話 */}
+                      {/* L: 図面有無 */}
+                      <td className="py-1 px-2 bg-white text-center">
+                        <select
+                          value={r.hasDrawing || ''}
+                          onChange={(e) => handleQuickChange(r.no, 'hasDrawing', e.target.value)}
+                          className={`w-full px-1.5 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden text-center font-bold ${
+                            r.hasDrawing === '○'
+                              ? 'text-indigo-700 bg-indigo-50 font-bold'
+                              : 'text-slate-300'
+                          }`}
+                        >
+                          <option value="">-</option>
+                          <option value="○">○</option>
+                        </select>
+                      </td>
+
+                      {/* M: 電話 */}
                       <td className="py-1 px-2 bg-white">
                         <select
                           value={r.phoneStatus}
@@ -530,7 +575,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* M: 調査担当 */}
+                      {/* N: 調査担当 */}
                       <td className="py-1 px-2 bg-white">
                         <input
                           type="text"
@@ -541,7 +586,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         />
                       </td>
 
-                      {/* N: 調査日 */}
+                      {/* O: 調査日 */}
                       <td className="py-1 px-2 bg-white">
                         <input
                           type="date"
@@ -551,7 +596,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         />
                       </td>
 
-                      {/* O: 調査資料回収 */}
+                      {/* P: 調査資料回収 */}
                       <td className="py-1 px-2 bg-white">
                         <select
                           value={r.surveyDocCollection}
@@ -570,7 +615,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* P: 置き換え依頼 */}
+                      {/* Q: 置き換え依頼 */}
                       <td className="py-1 px-2 bg-white">
                         <select
                           value={r.replacementRequest}
@@ -589,7 +634,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* Q: 商品手配 */}
+                      {/* R: 商品手配 */}
                       <td className="py-1 px-2 bg-white">
                         <select
                           value={r.itemOrdering}
@@ -609,7 +654,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* R: 作業担当 */}
+                      {/* S: 作業担当 */}
                       <td className="py-1 px-2 bg-white">
                         <input
                           type="text"
@@ -620,7 +665,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         />
                       </td>
 
-                      {/* S: 日程連絡 */}
+                      {/* T: 日程連絡 */}
                       <td className="py-1 px-2 bg-white">
                         <select
                           value={r.scheduleNotice}
@@ -637,7 +682,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* T: 完了 */}
+                      {/* U: 完了 */}
                       <td className="py-1 px-2 bg-white text-center">
                         <select
                           value={r.completion}
@@ -725,7 +770,21 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">L: 電話ステータス</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    L: 図面有無
+                  </label>
+                  <select
+                    value={editFormData.hasDrawing || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, hasDrawing: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden font-bold"
+                  >
+                    <option value="">-（未確認 / なし）</option>
+                    <option value="○">○（図面あり）</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">M: 電話ステータス</label>
                   <select
                     value={editFormData.phoneStatus}
                     onChange={(e) => setEditFormData({ ...editFormData, phoneStatus: e.target.value })}
@@ -741,7 +800,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">M: 調査担当</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">N: 調査担当</label>
                   <input
                     type="text"
                     value={editFormData.surveyAssignee}
@@ -751,7 +810,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">N: 調査日</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">O: 調査日</label>
                   <input
                     type="date"
                     value={editFormData.surveyDate}
@@ -761,7 +820,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">O: 調査資料回収</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">P: 調査資料回収</label>
                   <select
                     value={editFormData.surveyDocCollection}
                     onChange={(e) => setEditFormData({ ...editFormData, surveyDocCollection: e.target.value })}
@@ -774,7 +833,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">P: 置き換え依頼</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Q: 置き換え依頼</label>
                   <select
                     value={editFormData.replacementRequest}
                     onChange={(e) => setEditFormData({ ...editFormData, replacementRequest: e.target.value })}
@@ -787,7 +846,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Q: 商品手配</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">R: 商品手配</label>
                   <select
                     value={editFormData.itemOrdering}
                     onChange={(e) => setEditFormData({ ...editFormData, itemOrdering: e.target.value })}
@@ -801,7 +860,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">R: 作業担当</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">S: 作業担当</label>
                   <input
                     type="text"
                     value={editFormData.workAssignee}
@@ -811,7 +870,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">S: 日程連絡</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">T: 日程連絡</label>
                   <select
                     value={editFormData.scheduleNotice}
                     onChange={(e) => setEditFormData({ ...editFormData, scheduleNotice: e.target.value })}
@@ -824,7 +883,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">T: 完了</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">U: 完了</label>
                   <select
                     value={editFormData.completion}
                     onChange={(e) => setEditFormData({ ...editFormData, completion: e.target.value })}
