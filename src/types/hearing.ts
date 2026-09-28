@@ -7,7 +7,7 @@
 // A〜I列: 入力禁止（マスタ情報）
 // J〜T列: 入力および選択方式（ヒアリング・業務進捗入力）
 
-export type LocationCategory = 'ビルイン' | 'フードコート' | 'フリスタ' | '未設定' | string;
+export type LocationCategory = 'ビルイン' | 'フードコート' | 'ロードサイド' | 'フリスタ' | '未設定' | string;
 
 export type PhoneStatus = '未架電' | '通話中' | '不在/再架電' | '完了' | '担当不在' | '着信拒否' | string;
 
@@ -35,7 +35,7 @@ export interface StoreRecord {
 
   // J〜T列（入力および選択方式）
   remarks1: string;                 // J: 備考欄1 (例: "LED,キッチン不明", "LED済み" 等)
-  category: LocationCategory;       // K: カテゴリ（ビルイン / フードコート / フリスタ）
+  category: LocationCategory;       // K: カテゴリ（ビルイン / フードコート / ロードサイド）
   phoneStatus: PhoneStatus;         // L: 電話（未架電 / 完了 / 不在 / 通話中 等）
   surveyAssignee: string;           // M: 調査担当
   surveyDate: string;               // N: 調査日（YYYY-MM-DD 等）
@@ -71,9 +71,11 @@ export interface HearingRecord {
     hasDedicatedParkingLights: boolean;
   };
   surveyRequirement: 'not_required' | 'required' | 'pending';
-  preferredDate1?: string;
+  visitPeriodStart?: string;        // 訪問予定期間（開始日：何日から）
+  visitPeriodEnd?: string;          // 訪問予定期間（終了日：何日まで）
+  preferredDate1?: string;          // 互換性保持（期間開始日）
   preferredTimeSlot1?: TimeSlot;
-  preferredDate2?: string;
+  preferredDate2?: string;          // 互換性保持（期間終了日）
   preferredTimeSlot2?: TimeSlot;
   workTiming?: 'during_hours' | 'idle_time' | 'after_hours';
   afterHoursTriggered: boolean;

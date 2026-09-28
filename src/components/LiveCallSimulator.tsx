@@ -60,7 +60,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       setPhoneNumber(initialStore.storeMobile);
       if (initialStore.category === 'ビルイン') setManualCategory('builtin');
       else if (initialStore.category === 'フードコート') setManualCategory('foodcourt');
-      else if (initialStore.category === 'フリスタ') setManualCategory('freesta');
+      else if (initialStore.category === 'ロードサイド' || initialStore.category === 'フリスタ') setManualCategory('freesta');
     }
   }, [initialStore]);
 
@@ -74,12 +74,78 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   const [hasDedicatedParkingLights, setHasDedicatedParkingLights] = useState<boolean | null>(null);
   const [manualCategory, setManualCategory] = useState<SimulatorLocationCategory | null>(null);
 
-  // Step 4: Scheduling
+  // Step 4: Visit Period & Time Slots (何日〜何日までに伺うか & 希望時間帯)
+  const [visitPeriodStart, setVisitPeriodStart] = useState('');
+  const [visitPeriodEnd, setVisitPeriodEnd] = useState('');
   const [preferredDate1, setPreferredDate1] = useState('');
   const [timeSlot1, setTimeSlot1] = useState<TimeSlot>('idle_time');
   const [preferredDate2, setPreferredDate2] = useState('');
   const [timeSlot2, setTimeSlot2] = useState<TimeSlot>('idle_time');
+  const [dayPreferenceNotes, setDayPreferenceNotes] = useState('');
   const [workTiming, setWorkTiming] = useState<'idle_time' | 'during_hours' | 'after_hours'>('idle_time');
+
+  const formatDateJp = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const handleSetVisitStart = (val: string) => {
+    setVisitPeriodStart(val);
+    setPreferredDate1(val);
+  };
+
+  const handleSetVisitEnd = (val: string) => {
+    setVisitPeriodEnd(val);
+    setPreferredDate2(val);
+  };
+
+  const setPresetRangeDays = (days: number) => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() + 1);
+    const end = new Date(start);
+    end.setDate(start.getDate() + days - 1);
+
+    const toYmd = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const s = toYmd(start);
+    const e = toYmd(end);
+    handleSetVisitStart(s);
+    handleSetVisitEnd(e);
+  };
+
+  const setNextWeekPreset = () => {
+    const today = new Date();
+    const currentDay = today.getDay(); // 0 is Sun, 1 is Mon
+    const daysUntilNextMon = currentDay === 0 ? 1 : 8 - currentDay;
+    const nextMon = new Date(today);
+    nextMon.setDate(today.getDate() + daysUntilNextMon);
+    const nextFri = new Date(nextMon);
+    nextFri.setDate(nextMon.getDate() + 4);
+
+    const toYmd = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const s = toYmd(nextMon);
+    const e = toYmd(nextFri);
+    handleSetVisitStart(s);
+    handleSetVisitEnd(e);
+  };
 
   // Step 5: Lock & Key Procedure (Conditional on after_hours)
   const [keyCustody, setKeyCustody] = useState<KeyCustodyStatus>('possible');
@@ -121,7 +187,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
         : computedCategory === 'foodcourt'
         ? 'フードコート（カウンター/キッチンのみ）'
         : computedCategory === 'freesta'
-        ? 'フリスタ（独立店舗・駐車場灯有）'
+        ? 'ロードサイド（独立店舗・駐車場灯有）'
         : '未特定';
 
     const ledLabel =
@@ -153,10 +219,18 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
     if (surveyRequirement === 'required') {
       summary += `■ 設置場所区分: ${categoryLabel}\n`;
-      summary += `■ 訪問希望日程:\n`;
-      summary += `  ・第1希望: ${preferredDate1 || '未定'} (${timeSlotLabel(timeSlot1)})\n`;
-      if (preferredDate2) {
-        summary += `  ・第2希望: ${preferredDate2} (${timeSlotLabel(timeSlot2)})\n`;
+      summary += `■ 訪問予定期間（伺う日程枠）:\n`;
+      const periodStr =
+        visitPeriodStart && visitPeriodEnd
+          ? `${visitPeriodStart} 〜 ${visitPeriodEnd}`
+          : visitPeriodStart || preferredDate1 || '未定';
+      summary += `  ・訪問予定期間: ${periodStr}\n`;
+      summary += `  ・第1希望時間帯: ${timeSlotLabel(timeSlot1)}\n`;
+      if (timeSlot2 && timeSlot2 !== timeSlot1) {
+        summary += `  ・第2希望時間帯（予備）: ${timeSlotLabel(timeSlot2)}\n`;
+      }
+      if (dayPreferenceNotes) {
+        summary += `  ・曜日/時間帯の店舗要望: ${dayPreferenceNotes}\n`;
       }
       summary += `  ・希望作業帯: ${workTiming === 'after_hours' ? '営業終了後・夜間作業' : '営業時間内/アイドルタイム'}\n`;
 
@@ -218,16 +292,18 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
         hasDedicatedParkingLights: hasDedicatedParkingLights ?? false,
       },
       surveyRequirement: surveyRequirement === 'not_required' ? 'not_required' : 'required',
-      preferredDate1,
+      visitPeriodStart: visitPeriodStart || preferredDate1,
+      visitPeriodEnd: visitPeriodEnd || preferredDate2,
+      preferredDate1: visitPeriodStart || preferredDate1,
       preferredTimeSlot1: timeSlot1,
-      preferredDate2,
+      preferredDate2: visitPeriodEnd || preferredDate2,
       preferredTimeSlot2: timeSlot2,
       workTiming,
       afterHoursTriggered: isAfterHours,
       keyCustody: isAfterHours ? keyCustody : 'not_applicable',
       lockProcedure,
       emergencyContact,
-      notes,
+      notes: notes + (dayPreferenceNotes ? ` [時間帯・曜日要望: ${dayPreferenceNotes}]` : ''),
       status: 'completed',
     };
 
@@ -241,7 +317,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           : computedCategory === 'foodcourt'
           ? 'フードコート'
           : computedCategory === 'freesta'
-          ? 'フリスタ'
+          ? 'ロードサイド'
           : '未設定';
 
       onUpdateStoreField(selectedStoreNo, 'category', catJpn);
@@ -255,8 +331,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
         onUpdateStoreField(selectedStoreNo, 'completion', '完了');
       } else {
         onUpdateStoreField(selectedStoreNo, 'remarks1', partialAreas || '一部未LED(蛍光灯有)');
-        if (preferredDate1) {
-          onUpdateStoreField(selectedStoreNo, 'surveyDate', preferredDate1);
+        const surveyPeriodStr =
+          visitPeriodStart && visitPeriodEnd
+            ? `${visitPeriodStart}〜${visitPeriodEnd}`
+            : visitPeriodStart || preferredDate1 || '';
+        if (surveyPeriodStr) {
+          onUpdateStoreField(selectedStoreNo, 'surveyDate', surveyPeriodStr);
         }
         onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
         onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
@@ -279,9 +359,13 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     setIsCounterOnly(null);
     setHasDedicatedParkingLights(null);
     setManualCategory(null);
+    setVisitPeriodStart('');
+    setVisitPeriodEnd('');
     setPreferredDate1('');
     setPreferredDate2('');
-    setWorkTiming('idle_time');
+    setTimeSlot1('idle_time');
+    setTimeSlot2('idle_time');
+    setDayPreferenceNotes('');
     setKeyCustody('possible');
     setLockProcedure('');
     setEmergencyContact('');
@@ -393,7 +477,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         setPhoneNumber(target.storeMobile);
                         if (target.category === 'ビルイン') setManualCategory('builtin');
                         else if (target.category === 'フードコート') setManualCategory('foodcourt');
-                        else if (target.category === 'フリスタ') setManualCategory('freesta');
+                        else if (target.category === 'ロードサイド' || target.category === 'フリスタ') setManualCategory('freesta');
                       }
                     }}
                     className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium text-slate-800"
@@ -564,7 +648,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                   <span className="text-xs text-blue-700 font-medium">客席・厨房・バックヤードまで確認</span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal">
-                  「ありがとうございます。まず、現在の店舗内の照明についてお伺いいたします。客席や厨房、バックヤード、看板などを含めまして、すでにすべての照明がLEDに切り替わっていますでしょうか？ それとも一部にまだ従来の蛍光灯が残っている状態でしょうか？」
+                  「ありがとうございます。まず、現在の店舗内の照明についてお伺いいたします。客席や厨房、バックヤードなどで、すでにすべての照明がLEDに切り替わっていますでしょうか？ それとも一部にまだ蛍光灯が残っている状態でしょうか？」
                 </p>
               </div>
 
@@ -736,14 +820,35 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
               <span className="font-bold text-sm sm:text-base text-slate-900">
-                STEP 3: 設置場所区分の判定（自然なヒアリング質問）
+                STEP 3: 設置場所区分の判定（既に区分が特定済みの場合はスキップ可能）
               </span>
               <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
-                ビルトイン / フードコート / フリスタ
+                ビルトイン / フードコート / ロードサイド
               </span>
             </div>
 
             <div className="p-5 space-y-5">
+              {/* If category already determined from Master or selection */}
+              {manualCategory && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-0.5 rounded">
+                      マスタ特定済み
+                    </span>
+                    <span className="text-xs font-medium text-emerald-900">
+                      設置場所区分は既に【{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'ロードサイド'}】として特定されています。
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setCurrentStep(4)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs shrink-0"
+                  >
+                    <span>このままSTEP 4（日程調整）へスキップ</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Natural Script Guidance */}
               <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
@@ -798,18 +903,21 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                   </div>
                 </div>
 
-                {/* Question 2: Counter only / Food Court */}
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
+                {/* Question 2: Counter only / Food Court & Office/Breakroom */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1">
                       <div className="text-xs font-bold text-slate-800">
-                        質問②：客席は店舗専用の席ですか？それともカウンター・厨房のみのフードコート形式ですか？
+                        質問②：客席形態（フードコート判定）および 別棟・別室（事務所・休憩室等）の確認
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        （カウンター/厨房のみの場合 → 区分: フードコート）
+                      <p className="text-xs sm:text-sm text-slate-700 bg-white p-2.5 rounded-md border border-slate-200 leading-relaxed font-normal">
+                        「客席は店舗専用のフロア席がございますでしょうか？ それとも、モールの共有フードコートのように、カウンターや厨房のみが店舗専有スペースとなっている形式でしょうか？ また別に事務所（休憩室やロッカーなど）はございませんでしょうか？」
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        ※カウンター/厨房のみの場合 → 区分は【フードコート】と判定。別室の事務所や休憩室の有無も調査対象・灯具把握に役立ちます。
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 pt-1">
                       <button
                         onClick={() => setIsCounterOnly(true)}
                         className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -842,7 +950,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         質問③：店舗専用の駐車場や、屋外の駐車場用照明・ポール灯などは敷地内にございますか？
                       </div>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        （専用駐車場灯あり・独立店舗 → 区分: フリスタ）
+                        （専用駐車場灯あり・独立店舗 → 区分: ロードサイド）
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -910,7 +1018,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     }`}
                   >
                     <Car className="w-5 h-5 mx-auto mb-1 text-emerald-600" />
-                    <div className="text-xs font-bold">区分：フリスタ</div>
+                    <div className="text-xs font-bold">区分：ロードサイド</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">独立路面店・駐車場灯有</div>
                   </div>
                 </div>
@@ -920,11 +1028,11 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-slate-700">受答え・共有トーク</span>
                     <span className="text-[11px] text-blue-600 font-semibold">
-                      選択中：{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}
+                      選択中：{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'ロードサイド'}
                     </span>
                   </div>
                   <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white p-2.5 rounded border border-slate-200 shadow-2xs">
-                    「ご回答ありがとうございます。店舗様は<strong className="text-blue-700">［{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}］</strong>形式の設備構成ですね。調査員に共有させていただきます。」
+                    「ご回答ありがとうございます。店舗様は<strong className="text-blue-700">［{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'ロードサイド'}］</strong>形式の設備構成ですね。調査員に共有させていただきます。」
                   </p>
                 </div>
               </div>
@@ -954,9 +1062,11 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
               <span className="font-bold text-sm sm:text-base text-slate-900">
-                STEP 4: 訪問希望日程・時間帯のヒアリング
+                STEP 4: 訪問予定期間（何日～何日までに伺うか）及び希望時間帯の合意
               </span>
-              <span className="text-xs text-slate-500">所要時間: 30〜45分程度</span>
+              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
+                所要時間: 30〜45分程度
+              </span>
             </div>
 
             <div className="p-5 space-y-5">
@@ -970,7 +1080,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                 </div>
                 <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
                   「それでは、現地の事前調査にお伺いする日程を調整させていただきたく存じます。調査はおよそ30分から45分程度で完了いたします。<br />
-                  来週以降で、ご都合の良い日時はございますでしょうか？」
+                  <strong className="text-blue-700 font-bold">
+                    {visitPeriodStart && visitPeriodEnd
+                      ? `${formatDateJp(visitPeriodStart)}～${formatDateJp(visitPeriodEnd)}の間`
+                      : '〇月〇日～〇月〇日の間'}
+                  </strong>
+                  で訪問させていただきますので、よろしくお願いいたします。」
                 </p>
                 {/* Free of charge notice banner / script */}
                 <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 flex items-start gap-2">
@@ -983,21 +1098,118 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                 </div>
               </div>
 
-              {/* Scheduling Inputs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                  <div className="text-xs font-bold text-blue-900">第1希望 日時</div>
-                  <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">希望日</label>
-                    <input
-                      type="date"
-                      value={preferredDate1}
-                      onChange={(e) => setPreferredDate1(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                    />
+              {/* Scheduling Inputs: Visit Period (Left) & Preferred Time Slots (Right) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left Card: Visit Period Propose & Fix */}
+                <div className="p-4 rounded-xl bg-blue-50/40 border-2 border-blue-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-blue-950">訪問予定期間（何日～何日までに伺うか）</span>
+                    </div>
+                    <span className="text-[11px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
+                      こちらから提示
+                    </span>
                   </div>
+
+                  {/* Preset quick buttons */}
                   <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">希望時間帯</label>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                      期間クイック選択（通話中のワンクリック入力）:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={setNextWeekPreset}
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-white border border-blue-300 text-blue-700 hover:bg-blue-100/60 rounded-md transition-colors shadow-2xs"
+                      >
+                        来週平日（月〜金）
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPresetRangeDays(7)}
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-white border border-blue-300 text-blue-700 hover:bg-blue-100/60 rounded-md transition-colors shadow-2xs"
+                      >
+                        今後7日間
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPresetRangeDays(14)}
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-white border border-blue-300 text-blue-700 hover:bg-blue-100/60 rounded-md transition-colors shadow-2xs"
+                      >
+                        今後2週間
+                      </button>
+                      {(visitPeriodStart || visitPeriodEnd) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleSetVisitStart('');
+                            handleSetVisitEnd('');
+                          }}
+                          className="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-md transition-colors"
+                        >
+                          クリア
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Date Pickers for Start and End Date */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        開始日（何日から）
+                      </label>
+                      <input
+                        type="date"
+                        value={visitPeriodStart}
+                        onChange={(e) => handleSetVisitStart(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        終了日（何日までに）
+                      </label>
+                      <input
+                        type="date"
+                        value={visitPeriodEnd}
+                        onChange={(e) => handleSetVisitEnd(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Agreed Period Banner */}
+                  <div className="p-2.5 rounded-lg bg-white border border-blue-200 flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium">合意・確定予定期間:</span>
+                    <span className="font-bold text-blue-900">
+                      {visitPeriodStart && visitPeriodEnd
+                        ? `${formatDateJp(visitPeriodStart)} 〜 ${formatDateJp(visitPeriodEnd)} までに伺う`
+                        : visitPeriodStart
+                        ? `${formatDateJp(visitPeriodStart)} 以降`
+                        : '（期間を選択・入力してください）'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right Card: Preferred Time Slots (希望時間帯は現在のものを残す) */}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-slate-700" />
+                      <span className="text-xs font-bold text-slate-900">店舗様のご希望時間帯</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      ★所要時間 30〜45分
+                    </span>
+                  </div>
+
+                  {/* Primary Time Slot */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      第1希望 時間帯
+                    </label>
                     <select
                       value={timeSlot1}
                       onChange={(e) => {
@@ -1005,7 +1217,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         setTimeSlot1(val);
                         if (val === 'after_hours') setWorkTiming('after_hours');
                       }}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
                     >
                       <option value="idle_time">アイドルタイム（14:00〜16:00）★推奨</option>
                       <option value="morning">午前中・開店前（10:00〜12:00）</option>
@@ -1014,21 +1226,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       <option value="any">終日・指定なし</option>
                     </select>
                   </div>
-                </div>
 
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                  <div className="text-xs font-bold text-blue-900">第2希望 日時（予備日）</div>
+                  {/* Secondary Time Slot (Backup) */}
                   <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">希望日</label>
-                    <input
-                      type="date"
-                      value={preferredDate2}
-                      onChange={(e) => setPreferredDate2(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">希望時間帯</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      第2希望 時間帯（予備時間帯）
+                    </label>
                     <select
                       value={timeSlot2}
                       onChange={(e) => {
@@ -1036,7 +1239,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         setTimeSlot2(val);
                         if (val === 'after_hours') setWorkTiming('after_hours');
                       }}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
                     >
                       <option value="idle_time">アイドルタイム（14:00〜16:00）★推奨</option>
                       <option value="morning">午前中・開店前（10:00〜12:00）</option>
@@ -1044,6 +1247,20 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       <option value="after_hours">営業終了後・夜間（閉店後作業）★戸締り確認発動</option>
                       <option value="any">終日・指定なし</option>
                     </select>
+                  </div>
+
+                  {/* Convenient day notes */}
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-1">
+                      都合の良い曜日・時間帯の備考（任意）
+                    </label>
+                    <input
+                      type="text"
+                      value={dayPreferenceNotes}
+                      onChange={(e) => setDayPreferenceNotes(e.target.value)}
+                      placeholder="例: 水曜定休のため火・木が確実、店長不在日は避ける 等"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden placeholder:text-slate-400"
+                    />
                   </div>
                 </div>
               </div>
@@ -1294,7 +1511,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       判定結果：【訪問調査 必要（技術員日程手配へ）】
                     </div>
                     <div className="text-xs text-blue-800 mt-1 leading-relaxed">
-                      区分「{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}」にて、第1希望［{preferredDate1 || '未定'} ({timeSlotLabel(timeSlot1)})］で調査員をアサインします。
+                      区分「{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'ロードサイド'}」にて、訪問予定期間［{visitPeriodStart && visitPeriodEnd ? `${visitPeriodStart}〜${visitPeriodEnd}` : preferredDate1 || '未定'} ({timeSlotLabel(timeSlot1)})］で調査員をアサインします。
                       {isAfterHours && '（※夜間作業・戸締り確認済み）'}
                     </div>
                   </div>
@@ -1317,9 +1534,8 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     「それでは本日お伺いした内容を復唱いたします。<br />
                     ・店舗名：［{storeName || '〇〇店舗'}］様<br />
                     ・LED化状況：一部未LED箇所あり（{partialAreas || '倉庫・厨房等'}）<br />
-                    ・設置場所区分：［{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'フリスタ'}］<br />
-                    ・訪問希望日程：第1希望［{preferredDate1 || '〇月〇日'} {timeSlotLabel(timeSlot1)}］
-                    {preferredDate2 ? `、第2希望［${preferredDate2} ${timeSlotLabel(timeSlot2)}］` : ''}<br />
+                    ・設置場所区分：［{computedCategory === 'builtin' ? 'ビルトイン' : computedCategory === 'foodcourt' ? 'フードコート' : 'ロードサイド'}］<br />
+                    ・訪問予定期間：［{visitPeriodStart && visitPeriodEnd ? `${formatDateJp(visitPeriodStart)}～${formatDateJp(visitPeriodEnd)}` : (preferredDate1 || '〇月〇日～〇月〇日')}］（希望時間帯：{timeSlotLabel(timeSlot1)}）<br />
                     ・立会者様：{contactPerson || '店長'} 様<br />
                     {isAfterHours && `・戸締り手順：${lockProcedure || 'キーボックス返却'}\n`}
                     日程確定のご案内を、2営業日以内にご連絡差し上げます。本日はお忙しい中、ご丁寧にご対応いただき誠にありがとうございました。失礼いたします。」

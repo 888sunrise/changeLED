@@ -136,7 +136,7 @@ export const FlowchartView: React.FC<FlowchartViewProps> = ({ onSelectStep }) =>
                   <span className="text-xs font-bold text-slate-500">STEP 3</span>
                   <span className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-medium">3区分判定</span>
                 </div>
-                <div className="text-sm font-bold text-slate-900 mt-1">設置場所区分の自然な判定</div>
+                <div className="text-sm font-bold text-slate-900 mt-1">設置場所区分の判定（特定分はスキップ）</div>
                 <div className="mt-2.5 space-y-1.5 text-xs text-slate-700">
                   <div className="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-200">
                     <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -148,7 +148,7 @@ export const FlowchartView: React.FC<FlowchartViewProps> = ({ onSelectStep }) =>
                   </div>
                   <div className="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-200">
                     <Car className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>駐車場灯あり・ロードサイド独立店 → <strong>【フリスタ】</strong></span>
+                    <span>駐車場灯あり・独立店 → <strong>【ロードサイド】</strong></span>
                   </div>
                 </div>
               </div>
@@ -164,9 +164,9 @@ export const FlowchartView: React.FC<FlowchartViewProps> = ({ onSelectStep }) =>
                   <span className="text-xs font-bold text-slate-500">STEP 4</span>
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium">日程調整</span>
                 </div>
-                <div className="text-sm font-bold text-slate-900 mt-1">訪問希望日程・時間帯の聴取</div>
+                <div className="text-sm font-bold text-slate-900 mt-1">訪問予定期間（何日～何日）及び希望時間帯の合意</div>
                 <p className="text-xs text-slate-600 mt-1">
-                  第1希望・第2希望、立会者名を確認（所要30〜45分）
+                  こちらから何日～何日までに伺うか提示し、希望時間帯・立会者名を確認（所要30〜45分）
                 </p>
 
                 {/* Sub-Branch Trigger Notice */}
@@ -248,7 +248,7 @@ export const FlowchartView: React.FC<FlowchartViewProps> = ({ onSelectStep }) =>
             <span>設置場所区分の自然な聞き方</span>
           </div>
           <p className="mt-2 text-xs text-slate-600 leading-relaxed">
-            専門用語を使わず、「ビル内テナントか？」「客席はあるか（フードコートカウンターのみか）？」「駐車場や外灯はあるか？」の日常質問で【ビルトイン／フードコート／フリスタ】を即座に分類。
+            専門用語を使わず、「ビル内テナントか？」「客席はあるか（フードコートカウンターのみか）？」「駐車場や外灯はあるか？」の日常質問で【ビルトイン／フードコート／ロードサイド】を即座に分類。
           </p>
         </div>
 

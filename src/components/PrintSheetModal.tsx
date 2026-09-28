@@ -163,18 +163,30 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
                           : record.locationCategory === 'foodcourt'
                           ? 'フードコート（カウンター・厨房のみ）'
                           : record.locationCategory === 'freesta'
-                          ? 'フリスタ（独立路面店舗 / 駐車場照明あり）'
+                          ? 'ロードサイド（独立路面店舗 / 駐車場照明あり）'
                           : '未特定'}
                       </td>
                     </tr>
                     <tr className="border-b border-slate-200">
-                      <th className="p-2 bg-slate-50 text-left font-semibold text-slate-600">第1希望日時</th>
-                      <td className="p-2">
-                        {record.preferredDate1 || '未定'} / {record.preferredTimeSlot1 || '時間指定なし'}
+                      <th className="p-2 bg-slate-50 text-left font-semibold text-slate-600">訪問予定期間</th>
+                      <td className="p-2 font-bold text-blue-900">
+                        {record.visitPeriodStart && record.visitPeriodEnd
+                          ? `${record.visitPeriodStart} 〜 ${record.visitPeriodEnd}`
+                          : record.preferredDate1 && record.preferredDate2
+                          ? `${record.preferredDate1} 〜 ${record.preferredDate2}`
+                          : record.preferredDate1 || '未定'}
                       </td>
-                      <th className="w-28 p-2 bg-slate-50 text-left font-semibold text-slate-600">第2希望日時</th>
+                      <th className="w-28 p-2 bg-slate-50 text-left font-semibold text-slate-600">希望時間帯</th>
                       <td className="p-2">
-                        {record.preferredDate2 || 'なし'} / {record.preferredTimeSlot2 || '-'}
+                        {record.preferredTimeSlot1 === 'idle_time'
+                          ? 'アイドルタイム（14:00〜16:00）'
+                          : record.preferredTimeSlot1 === 'morning'
+                          ? '午前中（10:00〜12:00）'
+                          : record.preferredTimeSlot1 === 'afternoon'
+                          ? '午後（13:00〜17:00）'
+                          : record.preferredTimeSlot1 === 'after_hours'
+                          ? '営業終了後・夜間作業'
+                          : record.preferredTimeSlot1 || '時間指定なし'}
                       </td>
                     </tr>
                     <tr>

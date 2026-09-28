@@ -240,7 +240,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               <option value="all">すべて</option>
               <option value="ビルイン">ビルイン</option>
               <option value="フードコート">フードコート</option>
-              <option value="フリスタ">フリスタ</option>
+              <option value="ロードサイド">ロードサイド</option>
               <option value="未設定">未設定</option>
             </select>
           </div>
@@ -494,7 +494,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                               ? 'text-blue-700 bg-blue-50/50'
                               : r.category === 'フードコート'
                               ? 'text-amber-700 bg-amber-50/50'
-                              : r.category === 'フリスタ'
+                              : r.category === 'ロードサイド' || r.category === 'フリスタ'
                               ? 'text-emerald-700 bg-emerald-50/50'
                               : 'text-slate-400'
                           }`}
@@ -502,7 +502,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                           <option value="未設定">未設定</option>
                           <option value="ビルイン">ビルイン</option>
                           <option value="フードコート">フードコート</option>
-                          <option value="フリスタ">フリスタ</option>
+                          <option value="ロードサイド">ロードサイド</option>
                         </select>
                       </td>
 
@@ -720,7 +720,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                     <option value="未設定">未設定</option>
                     <option value="ビルイン">ビルイン（ビルテナント）</option>
                     <option value="フードコート">フードコート（カウンター/厨房のみ）</option>
-                    <option value="フリスタ">フリスタ（独立路面・駐車場灯有）</option>
+                    <option value="ロードサイド">ロードサイド（独立路面・駐車場灯有）</option>
                   </select>
                 </div>
 

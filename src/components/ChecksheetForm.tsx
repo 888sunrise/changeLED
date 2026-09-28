@@ -68,9 +68,9 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       '残存箇所',
       '設置場所区分',
       '訪問調査要否',
-      '第1希望日',
-      '第1希望時間帯',
-      '第2希望日',
+      '訪問予定期間',
+      '希望時間帯',
+      '第2希望時間帯',
       '作業帯',
       '夜間発動',
       '鍵預かり可否',
@@ -89,11 +89,11 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       `"${r.phoneNumber}"`,
       `"${r.ledStatus === 'all_led' ? '全灯LED済' : r.ledStatus === 'partial_led' ? '一部未LED' : '未着手'}"`,
       `"${r.partialAreas || ''}"`,
-      `"${r.locationCategory === 'builtin' ? 'ビルトイン' : r.locationCategory === 'foodcourt' ? 'フードコート' : r.locationCategory === 'freesta' ? 'フリスタ' : '未特定'}"`,
+      `"${r.locationCategory === 'builtin' ? 'ビルトイン' : r.locationCategory === 'foodcourt' ? 'フードコート' : r.locationCategory === 'freesta' ? 'ロードサイド' : '未特定'}"`,
       `"${r.surveyRequirement === 'not_required' ? '不要(案件完了)' : '要訪問調査'}"`,
-      `"${r.preferredDate1 || ''}"`,
+      `"${r.visitPeriodStart && r.visitPeriodEnd ? `${r.visitPeriodStart}〜${r.visitPeriodEnd}` : r.preferredDate1 || ''}"`,
       `"${r.preferredTimeSlot1 || ''}"`,
-      `"${r.preferredDate2 || ''}"`,
+      `"${r.preferredTimeSlot2 || ''}"`,
       `"${r.workTiming || ''}"`,
       `"${r.afterHoursTriggered ? '発動' : '未発動'}"`,
       `"${r.keyCustody}"`,
@@ -243,7 +243,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                 <th className="py-3 px-4">LED化状況</th>
                 <th className="py-3 px-4">設置区分</th>
                 <th className="py-3 px-4">訪問調査判定</th>
-                <th className="py-3 px-4">希望日程 / 戸締り確認</th>
+                <th className="py-3 px-4">訪問予定期間 / 希望時間帯</th>
                 <th className="py-3 px-4 text-right">操作</th>
               </tr>
             </thead>
@@ -308,7 +308,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                         ) : r.locationCategory === 'freesta' ? (
                           <span className="inline-flex items-center gap-1 text-slate-700">
                             <Car className="w-3.5 h-3.5 text-emerald-500" />
-                            <span>フリスタ</span>
+                            <span>ロードサイド</span>
                           </span>
                         ) : (
                           <span className="text-slate-400">-</span>
@@ -335,8 +335,23 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                         ) : (
                           <div>
                             <div className="font-semibold text-slate-800">
-                              {r.preferredDate1 || '未定'}
+                              {r.visitPeriodStart && r.visitPeriodEnd
+                                ? `${r.visitPeriodStart} 〜 ${r.visitPeriodEnd}`
+                                : r.preferredDate1 || '未定'}
                             </div>
+                            {r.preferredTimeSlot1 && (
+                              <div className="text-[11px] text-blue-600 mt-0.5">
+                                {r.preferredTimeSlot1 === 'idle_time'
+                                  ? 'アイドルタイム (14:00〜16:00)'
+                                  : r.preferredTimeSlot1 === 'morning'
+                                  ? '午前中 (10:00〜12:00)'
+                                  : r.preferredTimeSlot1 === 'afternoon'
+                                  ? '午後 (13:00〜17:00)'
+                                  : r.preferredTimeSlot1 === 'after_hours'
+                                  ? '閉店後・夜間'
+                                  : '時間帯指定なし'}
+                              </div>
+                            )}
                             {r.afterHoursTriggered && (
                               <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
                                 <Key className="w-3 h-3" />
