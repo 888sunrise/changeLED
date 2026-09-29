@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Table,
   Lock,
@@ -11,6 +11,8 @@ import {
   PhoneCall,
   Search,
   Download,
+  Upload,
+  FileText,
   Filter,
   CheckCircle2,
   AlertTriangle,
@@ -22,12 +24,17 @@ import {
   Building,
   Store,
   Car,
+  ArrowLeftRight,
+  Sliders,
+  Check,
 } from 'lucide-react';
 import { StoreRecord } from '../types/hearing';
+import { CsvDiffImportModal, DiffReportSummary } from './CsvDiffImportModal';
 
 interface StoreLedgerTableProps {
   records: StoreRecord[];
   onUpdateRecord: (updated: StoreRecord) => void;
+  onBulkUpdateStores?: (updatedStores: StoreRecord[]) => Promise<void>;
   onSelectStoreForCall: (store: StoreRecord) => void;
   onResetDefaults?: () => void;
 }
@@ -35,6 +42,7 @@ interface StoreLedgerTableProps {
 export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   records,
   onUpdateRecord,
+  onBulkUpdateStores,
   onSelectStoreForCall,
   onResetDefaults,
 }) => {
@@ -46,6 +54,35 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   const [editingStoreNo, setEditingStoreNo] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<StoreRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // CSV Diff Import Modal & Report
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [lastImportReport, setLastImportReport] = useState<DiffReportSummary | null>(() => {
+    try {
+      const saved = localStorage.getItem('led_last_diff_import_report');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Column Freeze Option (A〜D列固定 or A〜E列固定 as requested in item ②)
+  type FreezeColumnOption = 'D' | 'E' | 'none' | 'A' | 'B' | 'I';
+  const [freezeCol, setFreezeCol] = useState<FreezeColumnOption>(() => {
+    try {
+      const saved = localStorage.getItem('led_freeze_column_opt');
+      return (saved as FreezeColumnOption) || 'D';
+    } catch {
+      return 'D';
+    }
+  });
+
+  const handleSetFreezeCol = (opt: FreezeColumnOption) => {
+    setFreezeCol(opt);
+    try {
+      localStorage.setItem('led_freeze_column_opt', opt);
+    } catch {}
+  };
 
   // Filter logic
   const filteredRecords = records.filter((r) => {
@@ -71,9 +108,99 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     );
   });
 
+  // Top Seekbar & Synchronized Scroll (Item ③)
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(2400);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const isSyncingTop = useRef(false);
+  const isSyncingTable = useRef(false);
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (tableContainerRef.current) {
+        setTableScrollWidth(tableContainerRef.current.scrollWidth);
+        const max = tableContainerRef.current.scrollWidth - tableContainerRef.current.clientWidth;
+        if (max > 0) {
+          setScrollProgress(tableContainerRef.current.scrollLeft / max);
+        }
+      }
+    };
+    updateDimensions();
+    const timer = setTimeout(updateDimensions, 100);
+    window.addEventListener('resize', updateDimensions);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateDimensions);
+    };
+  }, [records, filteredRecords]);
+
+  const handleTopScroll = () => {
+    if (isSyncingTable.current) return;
+    if (!topScrollRef.current || !tableContainerRef.current) return;
+    isSyncingTop.current = true;
+    tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    const max = tableContainerRef.current.scrollWidth - tableContainerRef.current.clientWidth;
+    if (max > 0) {
+      setScrollProgress(tableContainerRef.current.scrollLeft / max);
+    }
+    requestAnimationFrame(() => {
+      isSyncingTop.current = false;
+    });
+  };
+
+  const handleTableScroll = () => {
+    if (isSyncingTop.current) return;
+    if (!topScrollRef.current || !tableContainerRef.current) return;
+    isSyncingTable.current = true;
+    topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+    const max = tableContainerRef.current.scrollWidth - tableContainerRef.current.clientWidth;
+    if (max > 0) {
+      setScrollProgress(tableContainerRef.current.scrollLeft / max);
+    }
+    requestAnimationFrame(() => {
+      isSyncingTable.current = false;
+    });
+  };
+
+  const handleSeekRange = (percentage: number) => {
+    if (!tableContainerRef.current) return;
+    const max = tableContainerRef.current.scrollWidth - tableContainerRef.current.clientWidth;
+    const targetLeft = (percentage / 100) * max;
+    tableContainerRef.current.scrollLeft = targetLeft;
+    if (topScrollRef.current) {
+      topScrollRef.current.scrollLeft = targetLeft;
+    }
+    setScrollProgress(percentage / 100);
+  };
+
+  const scrollToColumnOffset = (offset: number) => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTo({ left: offset, behavior: 'smooth' });
+    }
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleApplyDiff = async (updatedStores: StoreRecord[]) => {
+    if (onBulkUpdateStores) {
+      await onBulkUpdateStores(updatedStores);
+    } else {
+      for (const s of updatedStores) {
+        onUpdateRecord(s);
+      }
+    }
+    showToast(`${updatedStores.length}店舗の差分データを正常に上書き同期しました`);
+  };
+
+  const handleSaveReport = (report: DiffReportSummary) => {
+    setLastImportReport(report);
+    try {
+      localStorage.setItem('led_last_diff_import_report', JSON.stringify(report));
+    } catch {}
   };
 
   // Inline Quick Change for J〜T columns
@@ -228,6 +355,25 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             </div>
 
             <button
+              onClick={() => setIsDiffModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs whitespace-nowrap"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>CSV差分インポート</span>
+            </button>
+
+            {lastImportReport && (
+              <button
+                onClick={() => setIsDiffModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 shadow-2xs whitespace-nowrap"
+                title={`直近更新: ${lastImportReport.timestamp}`}
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>差分レポート ({lastImportReport.changedCount}件)</span>
+              </button>
+            )}
+
+            <button
               onClick={handleExportCSV}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 shadow-xs whitespace-nowrap"
             >
@@ -316,44 +462,212 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
         </div>
       </div>
 
-      {/* Main Table: Full Column Matrix A〜T */}
+      {/* Main Table: Full Column Matrix A〜U */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-        <div className="overflow-x-auto max-h-[640px]">
+        {/* Top Horizontal Seekbar & Quick Jump Bar (Item ③) */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* Left: Quick Jump Navigation */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-slate-500 font-bold flex items-center gap-1 mr-1">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-blue-600" />
+              <span>列ジャンプ:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => scrollToColumnOffset(0)}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-slate-700 font-semibold shadow-2xs transition-colors"
+              title="先頭 A〜D列（基本マスタ）へジャンプ"
+            >
+              ◀ A〜D列 (固定)
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToColumnOffset(360)}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-slate-700 font-semibold shadow-2xs transition-colors"
+              title="E〜I列（詳細マスタ）へジャンプ"
+            >
+              E〜I 住所・携帯
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToColumnOffset(750)}
+              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md text-blue-800 font-bold shadow-2xs transition-colors"
+              title="J〜L列（備考・図面）へジャンプ"
+            >
+              J〜L 備考・図面
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToColumnOffset(1250)}
+              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md text-blue-800 font-bold shadow-2xs transition-colors"
+              title="M〜Q列（電話・調査・手配）へジャンプ"
+            >
+              M〜Q 電話・調査
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToColumnOffset(2200)}
+              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md text-blue-800 font-bold shadow-2xs transition-colors"
+              title="R〜U列（作業・完了）へジャンプ"
+            >
+              R〜U 作業・完了 ▶
+            </button>
+          </div>
+
+          {/* Right: Seekbar Slider & Column Freeze Selector (Item ② & ③) */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium whitespace-nowrap">シーク:</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round(scrollProgress * 100)}
+                onChange={(e) => handleSeekRange(Number(e.target.value))}
+                className="w-24 sm:w-40 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                title="横スクロール位置を調整"
+              />
+              <span className="font-mono text-[11px] text-slate-500 w-8 text-right">
+                {Math.round(scrollProgress * 100)}%
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium whitespace-nowrap">画面固定:</span>
+              <select
+                value={freezeCol}
+                onChange={(e) => handleSetFreezeCol(e.target.value as any)}
+                className="text-xs bg-transparent font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+              >
+                <option value="D">A〜D列 固定（店名まで）★標準</option>
+                <option value="E">A〜E列 固定（店舗住所1まで）</option>
+                <option value="none">固定なし</option>
+                <option value="A">A列のみ（NO）</option>
+                <option value="B">A〜B列（店番まで）</option>
+                <option value="I">A〜I列（マスタ全列）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Synchronized Top Horizontal Scrollbar (Item ③) */}
+        <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
+          className="overflow-x-auto overflow-y-hidden border-b border-slate-200 bg-slate-100/90 cursor-ew-resize"
+          style={{ height: '14px' }}
+          title="上部横スクロールバー（ドラッグで左右にスクロールできます）"
+        >
+          <div style={{ width: `${tableScrollWidth}px`, height: '1px' }} />
+        </div>
+
+        <div
+          ref={tableContainerRef}
+          onScroll={handleTableScroll}
+          className="overflow-x-auto max-h-[640px]"
+        >
           <table className="w-full text-left text-xs border-collapse">
-            {/* Table Header: Divided into A-I (Locked) and J-T (Editable) */}
+            {/* Table Header: Divided into A-I (Locked) and J-U (Editable) */}
             <thead className="sticky top-0 z-20 shadow-xs">
               {/* Group Super Header */}
               <tr className="text-[11px] font-bold border-b border-slate-200 text-slate-700">
-                <th colSpan={10} className="bg-slate-100/95 py-2 px-3 border-r-2 border-slate-300">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>【A〜I列：マスタ情報（入力禁止・閲覧専用）】</span>
-                  </div>
-                </th>
-                <th colSpan={11} className="bg-blue-50/95 py-2 px-3">
+                {freezeCol === 'D' ? (
+                  <>
+                    <th colSpan={4} className="bg-slate-200/95 py-2 px-3 border-r-2 border-slate-300 sticky left-0 z-30 shadow-xs">
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <Lock className="w-3.5 h-3.5 text-slate-600" />
+                        <span>【A〜D列：基本マスタ（画面固定）】</span>
+                      </div>
+                    </th>
+                    <th colSpan={6} className="bg-slate-100/95 py-2 px-3 border-r-2 border-slate-300">
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <span>【E〜I列：マスタ詳細（閲覧専用）】</span>
+                      </div>
+                    </th>
+                  </>
+                ) : freezeCol === 'E' ? (
+                  <>
+                    <th colSpan={5} className="bg-slate-200/95 py-2 px-3 border-r-2 border-slate-300 sticky left-0 z-30 shadow-xs">
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <Lock className="w-3.5 h-3.5 text-slate-600" />
+                        <span>【A〜E列：マスタ（画面固定）】</span>
+                      </div>
+                    </th>
+                    <th colSpan={5} className="bg-slate-100/95 py-2 px-3 border-r-2 border-slate-300">
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <span>【F〜I列：詳細（閲覧専用）】</span>
+                      </div>
+                    </th>
+                  </>
+                ) : (
+                  <th colSpan={10} className="bg-slate-100/95 py-2 px-3 border-r-2 border-slate-300">
+                    <div className="flex items-center gap-1.5 text-slate-600">
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                      <span>【A〜I列：マスタ情報（入力禁止・閲覧専用）】</span>
+                    </div>
+                  </th>
+                )}
+                <th colSpan={12} className="bg-blue-50/95 py-2 px-3">
                   <div className="flex items-center gap-1.5 text-blue-800">
                     <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                    <span>【J〜T列：ヒアリング・調査進捗入力（入力および選択方式）】</span>
+                    <span>【J〜U列：ヒアリング・調査進捗入力（入力および選択方式）】</span>
                   </div>
                 </th>
               </tr>
 
               {/* Column Individual Headers */}
               <tr className="border-b border-slate-200 divide-x divide-slate-200">
-                {/* A to I */}
-                <th className="py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap text-center w-12">
+                {/* A: NO */}
+                <th
+                  className={`py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap text-center ${
+                    freezeCol !== 'none' ? 'sticky left-0 z-30' : ''
+                  }`}
+                  style={{ width: '52px', minWidth: '52px', maxWidth: '52px' }}
+                >
                   A: NO
                 </th>
-                <th className="py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap w-20">
+
+                {/* B: 店番 */}
+                <th
+                  className={`py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap ${
+                    freezeCol === 'B' || freezeCol === 'D' || freezeCol === 'E' || freezeCol === 'I' ? 'sticky left-[52px] z-30' : ''
+                  }`}
+                  style={{ width: '76px', minWidth: '76px', maxWidth: '76px' }}
+                >
                   B: 店番
                 </th>
-                <th className="py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap w-20">
+
+                {/* C: 代表番号 */}
+                <th
+                  className={`py-2.5 px-3 bg-slate-100 font-bold text-slate-700 whitespace-nowrap ${
+                    freezeCol === 'D' || freezeCol === 'E' || freezeCol === 'I' ? 'sticky left-[128px] z-30' : ''
+                  }`}
+                  style={{ width: '76px', minWidth: '76px', maxWidth: '76px' }}
+                >
                   C: 代表番号
                 </th>
-                <th className="py-2.5 px-3 bg-slate-100 font-bold text-slate-800 whitespace-nowrap min-w-36">
+
+                {/* D: 店名 */}
+                <th
+                  className={`py-2.5 px-3 bg-slate-100 font-bold text-slate-800 whitespace-nowrap ${
+                    freezeCol === 'D' || freezeCol === 'E' || freezeCol === 'I'
+                      ? `sticky left-[204px] z-30 ${freezeCol === 'D' ? 'border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]' : ''}`
+                      : ''
+                  }`}
+                  style={{ width: '150px', minWidth: '150px', maxWidth: '170px' }}
+                >
                   D: 店名
                 </th>
-                <th className="py-2.5 px-3 bg-slate-100 font-semibold text-slate-600 whitespace-nowrap min-w-28">
+
+                {/* E: 店舗住所1 */}
+                <th
+                  className={`py-2.5 px-3 bg-slate-100 font-semibold text-slate-600 whitespace-nowrap ${
+                    freezeCol === 'E' || freezeCol === 'I'
+                      ? `sticky left-[354px] z-30 ${freezeCol === 'E' ? 'border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]' : ''}`
+                      : ''
+                  }`}
+                  style={{ width: '130px', minWidth: '130px', maxWidth: '140px' }}
+                >
                   E: 店舗住所1
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 font-semibold text-slate-600 whitespace-nowrap min-w-36">
@@ -423,52 +737,117 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 filteredRecords.map((r) => {
                   const isDone = r.completion === '完了';
 
+                  const isFrozen = (col: 'A' | 'B' | 'C' | 'D' | 'E') => {
+                    if (freezeCol === 'none') return false;
+                    if (freezeCol === 'A') return col === 'A';
+                    if (freezeCol === 'B') return col === 'A' || col === 'B';
+                    if (freezeCol === 'D') return col === 'A' || col === 'B' || col === 'C' || col === 'D';
+                    if (freezeCol === 'E') return col === 'A' || col === 'B' || col === 'C' || col === 'D' || col === 'E';
+                    if (freezeCol === 'I') return true;
+                    return false;
+                  };
+
                   return (
                     <tr
                       key={r.no}
-                      className={`hover:bg-blue-50/40 transition-colors divide-x divide-slate-100 ${
-                        isDone ? 'bg-emerald-50/20' : ''
+                      className={`divide-x divide-slate-200 transition-colors ${
+                        isDone
+                          ? 'bg-slate-200/90 text-slate-700 hover:bg-slate-200'
+                          : 'bg-white hover:bg-blue-50/40'
                       }`}
                     >
-                      {/* --- A〜I列（入力禁止・マスタ領域：bg-slate-50/60） --- */}
-                      <td className="py-2 px-3 text-center font-mono font-bold text-slate-500 bg-slate-50/70 select-none">
-                        {r.no}
+                      {/* --- A〜I列（入力禁止・マスタ領域） --- */}
+                      {/* A: NO */}
+                      <td
+                        className={`py-2 px-3 text-center font-mono font-bold select-none ${
+                          isFrozen('A') ? 'sticky left-0 z-10' : ''
+                        } ${isDone ? 'bg-slate-300/90 text-slate-700' : 'bg-slate-50/95 text-slate-500'}`}
+                        style={{ width: '52px', minWidth: '52px', maxWidth: '52px' }}
+                      >
+                        {isDone ? (
+                          <span className="flex items-center justify-center gap-0.5 font-bold text-slate-700">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{r.no}</span>
+                          </span>
+                        ) : (
+                          r.no
+                        )}
                       </td>
 
-                      <td className="py-2 px-3 font-mono text-slate-700 bg-slate-50/70 select-none">
+                      {/* B: 店番 */}
+                      <td
+                        className={`py-2 px-3 font-mono select-none ${
+                          isFrozen('B') ? 'sticky left-[52px] z-10' : ''
+                        } ${isDone ? 'bg-slate-300/90 text-slate-700' : 'bg-slate-50/95 text-slate-700'}`}
+                        style={{ width: '76px', minWidth: '76px', maxWidth: '76px' }}
+                      >
                         {r.storeCode}
                       </td>
 
-                      <td className="py-2 px-3 font-mono text-slate-700 bg-slate-50/70 select-none">
+                      {/* C: 代表番号 */}
+                      <td
+                        className={`py-2 px-3 font-mono select-none ${
+                          isFrozen('C') ? 'sticky left-[128px] z-10' : ''
+                        } ${isDone ? 'bg-slate-300/90 text-slate-700' : 'bg-slate-50/95 text-slate-700'}`}
+                        style={{ width: '76px', minWidth: '76px', maxWidth: '76px' }}
+                      >
                         {r.representativePhone}
                       </td>
 
-                      <td className="py-2 px-3 bg-slate-50/70">
-                        <div className="font-bold text-slate-900 flex items-center justify-between gap-1">
-                          <span>{r.storeName}</span>
-                          <button
-                            onClick={() => handleStartEdit(r)}
-                            className="opacity-0 group-hover:opacity-100 text-blue-600 hover:text-blue-800 p-0.5 rounded"
-                            title="詳細フォームを開く"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
+                      {/* D: 店名 */}
+                      <td
+                        className={`py-2 px-3 ${
+                          isFrozen('D')
+                            ? `sticky left-[204px] z-10 ${freezeCol === 'D' ? 'border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]' : ''}`
+                            : ''
+                        } ${isDone ? 'bg-slate-300/90 text-slate-800' : 'bg-slate-50/95 text-slate-900'}`}
+                        style={{ width: '150px', minWidth: '150px', maxWidth: '170px' }}
+                      >
+                        <div className="font-bold flex items-center justify-between gap-1">
+                          <span className={isDone ? 'text-slate-800' : 'text-slate-900'}>
+                            {r.storeName}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {isDone && (
+                              <span className="text-[10px] bg-slate-400/40 text-slate-800 px-1 py-0.5 rounded font-bold whitespace-nowrap">
+                                完了
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleStartEdit(r)}
+                              className="opacity-0 group-hover:opacity-100 text-blue-600 hover:text-blue-800 p-0.5 rounded transition-opacity"
+                              title="詳細フォームを開く"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       </td>
 
-                      <td className="py-2 px-3 text-slate-600 bg-slate-50/70 select-none">
+                      {/* E: 店舗住所1 */}
+                      <td
+                        className={`py-2 px-3 select-none ${
+                          isFrozen('E')
+                            ? `sticky left-[354px] z-10 ${freezeCol === 'E' ? 'border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.12)]' : ''}`
+                            : ''
+                        } ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-slate-50/70 text-slate-600'}`}
+                        style={{ width: '130px', minWidth: '130px', maxWidth: '140px' }}
+                      >
                         {r.address1}
                       </td>
 
-                      <td className="py-2 px-3 text-slate-600 bg-slate-50/70 select-none">
+                      {/* F: 店舗住所2 */}
+                      <td className={`py-2 px-3 select-none ${isDone ? 'bg-slate-200/90 text-slate-600' : 'bg-slate-50/70 text-slate-600'}`}>
                         {r.address2}
                       </td>
 
-                      <td className="py-2 px-3 text-slate-500 text-[11px] bg-slate-50/70 select-none">
+                      {/* G: 店舗建物名 */}
+                      <td className={`py-2 px-3 text-[11px] select-none ${isDone ? 'bg-slate-200/90 text-slate-500' : 'bg-slate-50/70 text-slate-500'}`}>
                         {r.buildingName || '-'}
                       </td>
 
-                      <td className="py-2 px-3 font-mono text-slate-800 bg-slate-50/70 whitespace-nowrap">
+                      {/* H: 店舗携帯番号 */}
+                      <td className={`py-2 px-3 font-mono whitespace-nowrap ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-slate-50/70 text-slate-800'}`}>
                         <a
                           href={`tel:${r.storeMobile.replace(/-/g, '')}`}
                           className="hover:text-blue-600 hover:underline"
@@ -477,10 +856,13 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </a>
                       </td>
 
-                      <td className="py-2 px-3 text-center bg-slate-50/70 select-none">
+                      {/* I: 運営 */}
+                      <td className={`py-2 px-3 text-center select-none ${isDone ? 'bg-slate-200/90' : 'bg-slate-50/70'}`}>
                         <span
                           className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                            r.managementType === '直営'
+                            isDone
+                              ? 'bg-slate-300 text-slate-700 font-bold'
+                              : r.managementType === '直営'
                               ? 'bg-blue-100 text-blue-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}
@@ -490,10 +872,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* コール発信アクションボタン */}
-                      <td className="py-1 px-2 text-center bg-slate-100 select-none">
+                      <td className={`py-1 px-2 text-center select-none ${isDone ? 'bg-slate-200/90' : 'bg-slate-100'}`}>
                         <button
                           onClick={() => onSelectStoreForCall(r)}
-                          className="flex items-center justify-center gap-1 w-full py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded shadow-2xs transition-colors"
+                          className={`flex items-center justify-center gap-1 w-full py-1 text-[11px] font-bold rounded shadow-2xs transition-colors ${
+                            isDone
+                              ? 'bg-slate-400/80 text-white hover:bg-slate-500'
+                              : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white'
+                          }`}
                           title="この店舗で通話ナビを開始"
                         >
                           <PhoneCall className="w-3 h-3" />
@@ -501,31 +887,37 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </button>
                       </td>
 
-                      {/* --- J〜T列（入力および選択方式：白背景＆アクティブ入力） --- */}
+                      {/* --- J〜U列（入力および選択方式：完了時はグレー背景） --- */}
                       {/* J: 備考欄1 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <input
                           type="text"
                           value={r.remarks1}
                           onChange={(e) => handleQuickChange(r.no, 'remarks1', e.target.value)}
                           placeholder="LED状況等入力..."
-                          className="w-full px-2 py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded transition-colors"
+                          className={`w-full px-2 py-1 text-xs border rounded transition-colors ${
+                            isDone
+                              ? 'bg-slate-200/90 text-slate-800 border-slate-300 focus:bg-white'
+                              : 'border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white'
+                          }`}
                         />
                       </td>
 
                       {/* K: カテゴリ */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.category}
                           onChange={(e) => handleQuickChange(r.no, 'category', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.category === 'ビルイン'
-                              ? 'text-blue-700 bg-blue-50/50'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.category === 'ビルイン'
+                              ? 'text-blue-700 bg-blue-50/50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.category === 'フードコート'
-                              ? 'text-amber-700 bg-amber-50/50'
+                              ? 'text-amber-700 bg-amber-50/50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.category === 'ロードサイド' || r.category === 'フリスタ'
-                              ? 'text-emerald-700 bg-emerald-50/50'
-                              : 'text-slate-400'
+                              ? 'text-emerald-700 bg-emerald-50/50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-slate-400 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未設定">未設定</option>
@@ -536,14 +928,16 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* L: 図面有無 */}
-                      <td className="py-1 px-2 bg-white text-center">
+                      <td className={`py-1 px-2 text-center ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.hasDrawing || ''}
                           onChange={(e) => handleQuickChange(r.no, 'hasDrawing', e.target.value)}
-                          className={`w-full px-1.5 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden text-center font-bold ${
-                            r.hasDrawing === '○'
-                              ? 'text-indigo-700 bg-indigo-50 font-bold'
-                              : 'text-slate-300'
+                          className={`w-full px-1.5 py-1 text-xs rounded border focus:outline-hidden text-center font-bold ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.hasDrawing === '○'
+                              ? 'text-indigo-700 bg-indigo-50 font-bold border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-slate-300 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="">-</option>
@@ -552,18 +946,20 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* M: 電話 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.phoneStatus}
                           onChange={(e) => handleQuickChange(r.no, 'phoneStatus', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.phoneStatus === '完了'
-                              ? 'text-emerald-700 bg-emerald-50'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.phoneStatus === '完了'
+                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.phoneStatus === '通話中'
-                              ? 'text-blue-700 bg-blue-50'
+                              ? 'text-blue-700 bg-blue-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.phoneStatus === '不在/再架電'
-                              ? 'text-amber-700 bg-amber-50'
-                              : 'text-slate-500'
+                              ? 'text-amber-700 bg-amber-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-slate-500 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未架電">未架電</option>
@@ -576,37 +972,47 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* N: 調査担当 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <input
                           type="text"
                           value={r.surveyAssignee}
                           onChange={(e) => handleQuickChange(r.no, 'surveyAssignee', e.target.value)}
                           placeholder="担当者名"
-                          className="w-full px-2 py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded transition-colors"
+                          className={`w-full px-2 py-1 text-xs border rounded transition-colors ${
+                            isDone
+                              ? 'bg-slate-200/90 text-slate-800 border-slate-300 focus:bg-white'
+                              : 'border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white'
+                          }`}
                         />
                       </td>
 
                       {/* O: 調査日 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <input
                           type="date"
                           value={r.surveyDate}
                           onChange={(e) => handleQuickChange(r.no, 'surveyDate', e.target.value)}
-                          className="w-full px-1.5 py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded transition-colors font-mono"
+                          className={`w-full px-1.5 py-1 text-xs border rounded transition-colors font-mono ${
+                            isDone
+                              ? 'bg-slate-200/90 text-slate-800 border-slate-300 focus:bg-white'
+                              : 'border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white'
+                          }`}
                         />
                       </td>
 
                       {/* P: 調査資料回収 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.surveyDocCollection}
                           onChange={(e) => handleQuickChange(r.no, 'surveyDocCollection', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.surveyDocCollection === '回収済'
-                              ? 'text-emerald-700 bg-emerald-50'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.surveyDocCollection === '回収済'
+                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.surveyDocCollection === '不要'
-                              ? 'text-slate-400'
-                              : 'text-amber-700'
+                              ? 'text-slate-400 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-amber-700 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未回収">未回収</option>
@@ -616,16 +1022,18 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* Q: 置き換え依頼 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.replacementRequest}
                           onChange={(e) => handleQuickChange(r.no, 'replacementRequest', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.replacementRequest === '依頼済'
-                              ? 'text-emerald-700 bg-emerald-50'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.replacementRequest === '依頼済'
+                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.replacementRequest === '対象外'
-                              ? 'text-slate-400'
-                              : 'text-amber-700'
+                              ? 'text-slate-400 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-amber-700 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未依頼">未依頼</option>
@@ -635,16 +1043,18 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* R: 商品手配 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.itemOrdering}
                           onChange={(e) => handleQuickChange(r.no, 'itemOrdering', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.itemOrdering === '完了' || r.itemOrdering === '手配済'
-                              ? 'text-emerald-700 bg-emerald-50'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.itemOrdering === '完了' || r.itemOrdering === '手配済'
+                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : r.itemOrdering === '納品待ち'
-                              ? 'text-blue-700 bg-blue-50'
-                              : 'text-slate-500'
+                              ? 'text-blue-700 bg-blue-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-slate-500 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未手配">未手配</option>
@@ -655,25 +1065,31 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* S: 作業担当 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <input
                           type="text"
                           value={r.workAssignee}
                           onChange={(e) => handleQuickChange(r.no, 'workAssignee', e.target.value)}
                           placeholder="工事業者/担当"
-                          className="w-full px-2 py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded transition-colors"
+                          className={`w-full px-2 py-1 text-xs border rounded transition-colors ${
+                            isDone
+                              ? 'bg-slate-200/90 text-slate-800 border-slate-300 focus:bg-white'
+                              : 'border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white'
+                          }`}
                         />
                       </td>
 
                       {/* T: 日程連絡 */}
-                      <td className="py-1 px-2 bg-white">
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.scheduleNotice}
                           onChange={(e) => handleQuickChange(r.no, 'scheduleNotice', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-medium ${
-                            r.scheduleNotice === '連絡済'
-                              ? 'text-emerald-700 bg-emerald-50'
-                              : 'text-amber-700'
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : r.scheduleNotice === '連絡済'
+                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : 'text-amber-700 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未連絡">未連絡</option>
@@ -683,16 +1099,16 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                       </td>
 
                       {/* U: 完了 */}
-                      <td className="py-1 px-2 bg-white text-center">
+                      <td className={`py-1 px-2 text-center ${isDone ? 'bg-slate-200/90' : 'bg-white'}`}>
                         <select
                           value={r.completion}
                           onChange={(e) => handleQuickChange(r.no, 'completion', e.target.value)}
-                          className={`px-2 py-1 text-xs rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-hidden font-bold ${
+                          className={`px-2 py-1 text-xs rounded border focus:outline-hidden font-bold ${
                             r.completion === '完了'
-                              ? 'text-emerald-800 bg-emerald-100'
+                              ? 'text-slate-900 bg-slate-300 border-slate-400 shadow-2xs font-extrabold ring-1 ring-slate-400'
                               : r.completion === '保留'
-                              ? 'text-rose-800 bg-rose-100'
-                              : 'text-slate-600 bg-slate-100'
+                              ? 'text-rose-800 bg-rose-100 border-transparent hover:border-slate-300'
+                              : 'text-slate-600 bg-slate-100 border-transparent hover:border-slate-300'
                           }`}
                         >
                           <option value="未完了">未完了</option>
@@ -929,6 +1345,16 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
           </div>
         </div>
       )}
+
+      {/* CSV Diff Import & Audit Modal */}
+      <CsvDiffImportModal
+        isOpen={isDiffModalOpen}
+        onClose={() => setIsDiffModalOpen(false)}
+        currentStores={records}
+        onApplyDiff={handleApplyDiff}
+        existingReport={lastImportReport}
+        onSaveReport={handleSaveReport}
+      />
     </div>
   );
 };

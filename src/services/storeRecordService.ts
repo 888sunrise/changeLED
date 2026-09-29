@@ -81,6 +81,23 @@ export async function updateStoreRecordInFirestore(record: StoreRecord): Promise
 }
 
 /**
+ * 差分更新された店舗レコード群を一括保存（Firestoreバッチ更新）
+ */
+export async function bulkUpdateStoreRecords(records: StoreRecord[]): Promise<void> {
+  if (!records || records.length === 0) return;
+  const chunkSize = 50;
+  const now = new Date().toISOString();
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map((rec) =>
+        setDoc(doc(db, COLLECTION_NAME, `store_${rec.no}`), { ...rec, updatedAt: now }, { merge: true })
+      )
+    );
+  }
+}
+
+/**
  * 旧27店舗データを全削除し、全173店舗データを一括投入
  */
 export async function resetAllStoreRecords(): Promise<void> {

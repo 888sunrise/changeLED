@@ -22,6 +22,7 @@ import {
 import {
   subscribeStoreRecords,
   updateStoreRecordInFirestore,
+  bulkUpdateStoreRecords,
   resetAllStoreRecords,
 } from './services/storeRecordService';
 import { AlertCircle } from 'lucide-react';
@@ -113,6 +114,21 @@ export default function App() {
     }
   };
 
+  // Bulk update store records (CSV Diff Import)
+  const handleBulkUpdateStores = async (updatedList: StoreRecord[]) => {
+    if (!updatedList || updatedList.length === 0) return;
+    const updateMap = new Map(updatedList.map((s) => [s.no, s]));
+    setStores((prev) => prev.map((s) => updateMap.get(s.no) || s));
+    try {
+      setSyncStatus('syncing');
+      await bulkUpdateStoreRecords(updatedList);
+      setSyncStatus('connected');
+    } catch (err) {
+      console.error('Failed to bulk update stores in Firestore:', err);
+      setSyncStatus('offline');
+    }
+  };
+
   // Update single field of store
   const handleUpdateStoreField = (storeNo: number, field: keyof StoreRecord, value: any) => {
     const target = stores.find((s) => s.no === storeNo);
@@ -199,6 +215,7 @@ export default function App() {
           <StoreLedgerTable
             records={stores}
             onUpdateRecord={handleUpdateStore}
+            onBulkUpdateStores={handleBulkUpdateStores}
             onSelectStoreForCall={handleSelectStoreForCall}
             onResetDefaults={() => resetAllStoreRecords()}
           />
