@@ -32,12 +32,23 @@ export function subscribeHearingRecords(
       q,
       (snapshot) => {
         if (snapshot.empty) {
-          // 初期シードデータが存在しない場合はサンプルデータを保存
-          seedInitialRecordsIfEmpty();
-          onData(INITIAL_SAMPLE_RECORDS);
+          // 初回のみ初期シードデータを保存（一度シード済みの場合は0件として正常反映）
+          const hasSeeded = typeof window !== 'undefined' ? localStorage.getItem('led_hearing_records_seeded') : null;
+          if (!hasSeeded) {
+            seedInitialRecordsIfEmpty();
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('led_hearing_records_seeded', 'true');
+            }
+            onData(INITIAL_SAMPLE_RECORDS);
+          } else {
+            onData([]);
+          }
           return;
         }
 
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('led_hearing_records_seeded', 'true');
+        }
         const items: HearingRecord[] = [];
         snapshot.forEach((docSnap) => {
           items.push(docSnap.data() as HearingRecord);

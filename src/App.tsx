@@ -50,6 +50,9 @@ export default function App() {
   // Selected Store for calling
   const [currentCallingStore, setCurrentCallingStore] = useState<StoreRecord | null>(null);
 
+  // Editing Hearing Record (when user clicks "修正" in checksheet)
+  const [editingRecord, setEditingRecord] = useState<HearingRecord | null>(null);
+
   // Hearing Record Cards
   const [records, setRecords] = useState<HearingRecord[]>(() => {
     try {
@@ -152,6 +155,11 @@ export default function App() {
     const target = stores.find((s) => s.no === storeNo);
     if (!target) return;
     const updated = { ...target, [field]: value };
+    if (field === 'callStatus') {
+      updated.phoneStatus = value;
+    } else if (field === 'phoneStatus') {
+      updated.callStatus = value;
+    }
     handleUpdateStore(updated);
   };
 
@@ -161,12 +169,67 @@ export default function App() {
     setActiveTab('simulator');
   };
 
-  // Save Hearing Record
+  // Save Hearing Record - Overwrites if record for same store already exists
   const handleSaveRecord = async (newRecord: HearingRecord) => {
-    setRecords((prev) => [newRecord, ...prev]);
+    let targetDocId = newRecord.id;
+
+    setRecords((prev) => {
+      // Find existing record for same store
+      const existingIndex = prev.findIndex((r) => {
+        if (r.id === newRecord.id) return true;
+        if (
+          r.storeId &&
+          newRecord.storeId &&
+          r.storeId.trim() !== '' &&
+          r.storeId.trim().toLowerCase() === newRecord.storeId.trim().toLowerCase()
+        ) {
+          return true;
+        }
+        if (
+          r.storeName &&
+          newRecord.storeName &&
+          r.storeName.trim() !== '' &&
+          r.storeName !== '無題店舗' &&
+          r.storeName.trim() === newRecord.storeName.trim()
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      let nextList: HearingRecord[];
+      if (existingIndex >= 0) {
+        // OVERWRITE existing record in place!
+        targetDocId = prev[existingIndex].id;
+        const merged: HearingRecord = {
+          ...prev[existingIndex],
+          ...newRecord,
+          id: targetDocId, // Keep existing document ID for persistence
+        };
+        nextList = [...prev];
+        nextList[existingIndex] = merged;
+      } else {
+        nextList = [newRecord, ...prev];
+      }
+
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextList));
+      } catch {}
+      return nextList;
+    });
+
     try {
       setSyncStatus('syncing');
-      await saveHearingRecordToFirestore(newRecord);
+      await saveHearingRecordToFirestore({
+        ...newRecord,
+        id: targetDocId,
+      });
+      // If the target document ID differed from newly generated id, clean up transient ID
+      if (targetDocId !== newRecord.id) {
+        try {
+          await deleteHearingRecordFromFirestore(newRecord.id);
+        } catch {}
+      }
       setSyncStatus('connected');
     } catch (err) {
       console.error('Failed to save hearing to Firestore:', err);
@@ -175,17 +238,73 @@ export default function App() {
   };
 
   const handleDeleteRecord = async (id: string) => {
-    if (window.confirm('このヒアリング記録を削除してもよろしいですか？')) {
-      setRecords((prev) => prev.filter((r) => r.id !== id));
+    setRecords((prev) => {
+      const next = prev.filter((r) => r.id !== id);
       try {
-        await deleteHearingRecordFromFirestore(id);
-      } catch (err) {
-        console.error('Failed to delete from Firestore:', err);
-      }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    try {
+      setSyncStatus('syncing');
+      await deleteHearingRecordFromFirestore(id);
+      setSyncStatus('connected');
+    } catch (err) {
+      console.error('Failed to delete hearing record from Firestore:', err);
+      setSyncStatus('offline');
     }
   };
 
+  // Switch to Call Navigator to Edit and Overwrite Record
+  const handleEditRecord = (record: HearingRecord) => {
+    setEditingRecord(record);
+    const matched = stores.find(
+      (s) =>
+        (record.storeId && s.storeCode === record.storeId) ||
+        s.storeName === record.storeName
+    );
+    if (matched) {
+      setCurrentCallingStore(matched);
+    } else {
+      setCurrentCallingStore({
+        no: 0,
+        storeCode: record.storeId || '',
+        representativePhone: record.phoneNumber,
+        storeName: record.storeName,
+        address1: '',
+        address2: '',
+        buildingName: '',
+        storeMobile: record.phoneNumber,
+        managementType: '直営',
+        remarks1: record.notes || '',
+        category:
+          record.locationCategory === 'builtin'
+            ? 'ビルイン'
+            : record.locationCategory === 'foodcourt'
+            ? 'フードコート'
+            : record.locationCategory === 'freesta'
+            ? 'ロードサイド'
+            : '未設定',
+        hasDrawing: '',
+        phoneContact: record.contactPerson,
+        surveyAssignee: record.operatorName,
+        surveyDate: record.preferredDate1 || '',
+        surveyDocCollection: '未回収',
+        replacementRequest: '未依頼',
+        itemOrdering: '未手配',
+        workAssignee: '',
+        scheduleNotice: '連絡済',
+        completion: record.surveyRequirement === 'not_required' ? '完了' : '未完了',
+        callStatus: (record.callStatus as any) || '完了',
+        phoneStatus: (record.callStatus as any) || '完了',
+      });
+    }
+    setActiveTab('simulator');
+  };
+
   const handleNewCall = () => {
+    setEditingRecord(null);
     setCurrentCallingStore(null);
     setActiveTab('simulator');
   };
@@ -243,7 +362,10 @@ export default function App() {
         {activeTab === 'simulator' && (
           <LiveCallSimulator
             stores={stores}
+            records={records}
             initialStore={currentCallingStore}
+            editingRecord={editingRecord}
+            onClearEditingRecord={() => setEditingRecord(null)}
             onUpdateStoreField={handleUpdateStoreField}
             onSaveRecord={handleSaveRecord}
             onGoToChecksheet={() => setActiveTab('checksheet')}
@@ -266,6 +388,7 @@ export default function App() {
           <ChecksheetForm
             records={records}
             onDeleteRecord={handleDeleteRecord}
+            onEditRecord={handleEditRecord}
             onStartNewHearing={handleNewCall}
           />
         )}

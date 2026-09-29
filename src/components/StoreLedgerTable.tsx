@@ -98,10 +98,13 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       if (filterHasDrawing === 'none' && r.hasDrawing === '○') return false;
     }
     if (filterPhoneStatus !== 'all') {
+      const curCallStatus = r.callStatus || r.phoneStatus || '未架電';
       if (filterPhoneStatus === 'recontact') {
-        const isRecontact = ['電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(r.phoneStatus);
+        const isRecontact = ['出ず', '電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(curCallStatus);
         if (!isRecontact) return false;
-      } else if (r.phoneStatus !== filterPhoneStatus) {
+      } else if (filterPhoneStatus === '出ず') {
+        if (curCallStatus !== '出ず' && curCallStatus !== '電話するも出ず') return false;
+      } else if (curCallStatus !== filterPhoneStatus) {
         return false;
       }
     }
@@ -115,6 +118,8 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       r.address1.toLowerCase().includes(q) ||
       r.address2.toLowerCase().includes(q) ||
       r.storeMobile.toLowerCase().includes(q) ||
+      (r.phoneContact || '').toLowerCase().includes(q) ||
+      (r.callStatus || '').toLowerCase().includes(q) ||
       r.remarks1.toLowerCase().includes(q) ||
       r.surveyAssignee.toLowerCase().includes(q) ||
       r.workAssignee.toLowerCase().includes(q)
@@ -239,7 +244,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     setEditFormData(null);
   };
 
-  // Export CSV exactly in format A〜U
+  // Export CSV exactly in format A〜V
   const handleExportCSV = () => {
     const headers = [
       'NO',
@@ -254,7 +259,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       '備考欄1',
       'カテゴリ',
       '図面有無',
-      '電話',
+      '電話口担当',
       '調査担当',
       '調査日',
       '調査資料回収',
@@ -263,6 +268,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       '作業担当',
       '日程連絡',
       '完了',
+      '電話状況',
     ];
 
     const rows = filteredRecords.map((r) => [
@@ -278,7 +284,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       `"${(r.remarks1 || '').replace(/"/g, '""')}"`,
       `"${r.category}"`,
       `"${r.hasDrawing || ''}"`,
-      `"${r.phoneStatus}"`,
+      `"${(r.phoneContact || '').replace(/"/g, '""')}"`,
       `"${r.surveyAssignee}"`,
       `"${r.surveyDate}"`,
       `"${r.surveyDocCollection}"`,
@@ -287,6 +293,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       `"${r.workAssignee}"`,
       `"${r.scheduleNotice}"`,
       `"${r.completion}"`,
+      `"${r.callStatus || r.phoneStatus || '未架電'}"`,
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
@@ -294,7 +301,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `LED切替調査台帳_A-U列_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `LED切替調査台帳_A-V列_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -305,7 +312,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       remarks1: '備考欄1 (J)',
       category: 'カテゴリ (K)',
       hasDrawing: '図面有無 (L)',
-      phoneStatus: '電話 (M)',
+      phoneContact: '電話口担当 (M)',
       surveyAssignee: '調査担当 (N)',
       surveyDate: '調査日 (O)',
       surveyDocCollection: '調査資料回収 (P)',
@@ -314,6 +321,8 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       workAssignee: '作業担当 (S)',
       scheduleNotice: '日程連絡 (T)',
       completion: '完了 (U)',
+      callStatus: '電話状況 (V)',
+      phoneStatus: '電話状況 (V)',
     };
     return map[f] || String(f);
   };
@@ -321,9 +330,9 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   // Quick stats
   const totalStores = records.length;
   const completedCount = records.filter((r) => r.completion === '完了').length;
-  const phonedCount = records.filter((r) => r.phoneStatus === '完了').length;
+  const phonedCount = records.filter((r) => (r.callStatus || r.phoneStatus) === '完了').length;
   const recontactCount = records.filter((r) =>
-    ['電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(r.phoneStatus)
+    ['出ず', '電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(r.callStatus || r.phoneStatus || '')
   ).length;
   const drawingCount = records.filter((r) => r.hasDrawing === '○').length;
 
@@ -343,7 +352,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-lg text-slate-900">
-                店舗調査・進捗管理台帳（A〜U列 統合CRM）
+                店舗調査・進捗管理台帳（A〜V列 統合CRM）
               </span>
               <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded">
                 173店舗マスタ連動
@@ -351,7 +360,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             </div>
             <p className="text-xs text-slate-600 mt-1">
               <strong>A〜I列（薄グレー背景）</strong>はマスタ情報のため<span className="text-rose-600 font-semibold">入力禁止（閲覧・架電専用）</span>、
-              <strong>J〜U列（白背景）</strong>はヒアリング後の<span className="text-blue-700 font-semibold">インライン編集・選択入力</span>が可能です。
+              <strong>J〜V列（白背景）</strong>はヒアリング後の<span className="text-blue-700 font-semibold">インライン編集・選択入力</span>が可能です。
             </p>
           </div>
 
@@ -363,7 +372,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               <span className="text-slate-500">図面あり(L):</span>
               <span className="font-bold text-indigo-600">{drawingCount}件</span>
               <span className="text-slate-300">|</span>
-              <span className="text-slate-500">架電完了(M):</span>
+              <span className="text-slate-500">架電完了(V):</span>
               <span className="font-bold text-blue-600">{phonedCount}件</span>
               {recontactCount > 0 && (
                 <>
@@ -452,22 +461,22 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
 
           {/* Phone Status Filter */}
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-slate-500">電話(M):</span>
+            <span className="text-slate-500">電話状況(V):</span>
             <select
               value={filterPhoneStatus}
               onChange={(e) => setFilterPhoneStatus(e.target.value)}
               className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
             >
               <option value="all">すべて</option>
-              <option value="recontact">★ 要再架電・折返待ち全体</option>
+              <option value="recontact">★ 要再架電・出ず・折返待ち全体</option>
               <option value="未架電">未架電</option>
-              <option value="電話するも出ず">電話するも出ず</option>
+              <option value="完了">完了</option>
+              <option value="出ず">出ず（電話するも出ず）</option>
               <option value="留守電">留守電</option>
               <option value="折返待ち">折返待ち</option>
               <option value="再連絡待ち">再連絡待ち</option>
               <option value="担当不在">担当不在</option>
               <option value="通話中">通話中</option>
-              <option value="完了">完了</option>
               <option value="不在/再架電">不在/再架電</option>
               <option value="着信拒否">着信拒否</option>
             </select>
@@ -647,10 +656,10 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                     </div>
                   </th>
                 )}
-                <th colSpan={12} className="bg-blue-50/95 py-2 px-3">
+                <th colSpan={13} className="bg-blue-50/95 py-2 px-3">
                   <div className="flex items-center gap-1.5 text-blue-800">
                     <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                    <span>【J〜U列：ヒアリング・調査進捗入力（入力および選択方式）】</span>
+                    <span>【J〜V列：ヒアリング・調査進捗入力（入力および選択方式）】</span>
                   </div>
                 </th>
               </tr>
@@ -737,7 +746,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                   L: 図面有無
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  M: 電話
+                  M: 電話口担当
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
                   N: 調査担当
@@ -763,13 +772,16 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28 text-center">
                   U: 完了
                 </th>
+                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-32 text-center">
+                  V: 電話状況
+                </th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={22} className="py-16 text-center">
+                  <td colSpan={23} className="py-16 text-center">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-xs">
                         <Table className="w-6 h-6" />
@@ -804,7 +816,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </tr>
               ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={22} className="py-12 text-center text-slate-400">
+                  <td colSpan={23} className="py-12 text-center text-slate-400">
                     条件に一致する店舗データがありません。
                   </td>
                 </tr>
@@ -1020,44 +1032,21 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         </select>
                       </td>
 
-                      {/* M: 電話 */}
+                      {/* M: 電話口担当 */}
                       <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
-                        <select
-                          value={r.phoneStatus}
-                          onChange={(e) => handleQuickChange(r.no, 'phoneStatus', e.target.value)}
-                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
+                        <input
+                          type="text"
+                          value={r.phoneContact || ''}
+                          onChange={(e) => handleQuickChange(r.no, 'phoneContact', e.target.value)}
+                          placeholder="電話口担当者"
+                          className={`w-full px-2 py-1 text-xs border rounded transition-colors ${
                             isDone
                               ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
-                              : r.phoneStatus === '完了'
-                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 font-bold'
-                              : r.phoneStatus === '電話するも出ず'
-                              ? 'text-rose-700 bg-rose-50 border-rose-200 font-bold'
-                              : r.phoneStatus === '留守電'
-                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
-                              : r.phoneStatus === '折返待ち'
-                              ? 'text-purple-700 bg-purple-50 border-purple-200 font-bold'
-                              : r.phoneStatus === '再連絡待ち'
-                              ? 'text-cyan-700 bg-cyan-50 border-cyan-200 font-bold'
-                              : r.phoneStatus === '担当不在'
-                              ? 'text-orange-700 bg-orange-50 border-orange-200 font-bold'
-                              : r.phoneStatus === '通話中'
-                              ? 'text-blue-700 bg-blue-50 border-blue-200 font-bold'
-                              : r.phoneStatus === '不在/再架電'
-                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
-                              : 'text-slate-500 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              : r.phoneContact
+                              ? 'text-slate-900 bg-slate-50 border-slate-300 font-medium'
+                              : 'text-slate-400 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
-                        >
-                          <option value="未架電">未架電</option>
-                          <option value="電話するも出ず">電話するも出ず</option>
-                          <option value="留守電">留守電</option>
-                          <option value="折返待ち">折返待ち</option>
-                          <option value="再連絡待ち">再連絡待ち</option>
-                          <option value="担当不在">担当不在</option>
-                          <option value="通話中">通話中</option>
-                          <option value="完了">完了</option>
-                          <option value="不在/再架電">不在/再架電</option>
-                          <option value="着信拒否">着信拒否</option>
-                        </select>
+                        />
                       </td>
 
                       {/* N: 調査担当 */}
@@ -1206,6 +1195,49 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                           <option value="対象外">対象外</option>
                         </select>
                       </td>
+
+                      {/* V: 電話状況 */}
+                      <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
+                        <select
+                          value={r.callStatus || r.phoneStatus || '未架電'}
+                          onChange={(e) => {
+                            handleQuickChange(r.no, 'callStatus', e.target.value);
+                            handleQuickChange(r.no, 'phoneStatus', e.target.value);
+                          }}
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-bold ${
+                            isDone
+                              ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '完了'
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '出ず' || (r.callStatus || r.phoneStatus) === '電話するも出ず'
+                              ? 'text-rose-700 bg-rose-50 border-rose-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '留守電'
+                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '折返待ち'
+                              ? 'text-purple-700 bg-purple-50 border-purple-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '再連絡待ち'
+                              ? 'text-cyan-700 bg-cyan-50 border-cyan-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '担当不在'
+                              ? 'text-orange-700 bg-orange-50 border-orange-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '通話中'
+                              ? 'text-blue-700 bg-blue-50 border-blue-200 font-bold'
+                              : (r.callStatus || r.phoneStatus) === '不在/再架電'
+                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                              : 'text-slate-500 border-transparent hover:border-slate-300 focus:border-blue-500'
+                          }`}
+                        >
+                          <option value="未架電">未架電</option>
+                          <option value="完了">完了</option>
+                          <option value="出ず">出ず</option>
+                          <option value="留守電">留守電</option>
+                          <option value="折返待ち">折返待ち</option>
+                          <option value="再連絡待ち">再連絡待ち</option>
+                          <option value="担当不在">担当不在</option>
+                          <option value="通話中">通話中</option>
+                          <option value="不在/再架電">不在/再架電</option>
+                          <option value="着信拒否">着信拒否</option>
+                        </select>
+                      </td>
                     </tr>
                   );
                 })
@@ -1289,23 +1321,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">M: 電話ステータス</label>
-                  <select
-                    value={editFormData.phoneStatus}
-                    onChange={(e) => setEditFormData({ ...editFormData, phoneStatus: e.target.value })}
+                  <label className="block text-xs font-bold text-slate-700 mb-1">M: 電話口担当</label>
+                  <input
+                    type="text"
+                    value={editFormData.phoneContact || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, phoneContact: e.target.value })}
+                    placeholder="対応者氏名・役職"
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
-                  >
-                    <option value="未架電">未架電</option>
-                    <option value="電話するも出ず">電話するも出ず</option>
-                    <option value="留守電">留守電</option>
-                    <option value="折返待ち">折返待ち</option>
-                    <option value="再連絡待ち">再連絡待ち</option>
-                    <option value="担当不在">担当不在</option>
-                    <option value="通話中">通話中</option>
-                    <option value="完了">完了</option>
-                    <option value="不在/再架電">不在/再架電</option>
-                    <option value="着信拒否">着信拒否</option>
-                  </select>
+                  />
                 </div>
 
                 <div>
@@ -1402,6 +1425,32 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                     <option value="完了">完了</option>
                     <option value="保留">保留</option>
                     <option value="対象外">対象外</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">V: 電話状況</label>
+                  <select
+                    value={editFormData.callStatus || editFormData.phoneStatus || '未架電'}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        callStatus: e.target.value,
+                        phoneStatus: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden font-bold"
+                  >
+                    <option value="未架電">未架電</option>
+                    <option value="完了">完了</option>
+                    <option value="出ず">出ず</option>
+                    <option value="留守電">留守電</option>
+                    <option value="折返待ち">折返待ち</option>
+                    <option value="再連絡待ち">再連絡待ち</option>
+                    <option value="担当不在">担当不在</option>
+                    <option value="通話中">通話中</option>
+                    <option value="不在/再架電">不在/再架電</option>
+                    <option value="着信拒否">着信拒否</option>
                   </select>
                 </div>
               </div>

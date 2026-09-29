@@ -20,6 +20,7 @@ import {
   Car,
   Eye,
   PlusCircle,
+  Edit3,
 } from 'lucide-react';
 import { HearingRecord } from '../types/hearing';
 import { PrintSheetModal } from './PrintSheetModal';
@@ -27,17 +28,20 @@ import { PrintSheetModal } from './PrintSheetModal';
 interface ChecksheetFormProps {
   records: HearingRecord[];
   onDeleteRecord: (id: string) => void;
+  onEditRecord: (record: HearingRecord) => void;
   onStartNewHearing: () => void;
 }
 
 export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   records,
   onDeleteRecord,
+  onEditRecord,
   onStartNewHearing,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'not_required'>('all');
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<HearingRecord | null>(null);
+  const [recordToDelete, setRecordToDelete] = useState<HearingRecord | null>(null);
 
   // Filtered list
   const filteredRecords = records.filter((r) => {
@@ -318,7 +322,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       <td className="py-3 px-4 whitespace-nowrap">
                         {r.callStatus ? (
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            r.callStatus === '電話するも出ず'
+                            r.callStatus === '出ず' || r.callStatus === '電話するも出ず'
                               ? 'bg-rose-100 text-rose-800'
                               : r.callStatus === '留守電'
                               ? 'bg-amber-100 text-amber-800'
@@ -383,17 +387,29 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* 修正ボタン (通話ナビへ戻って修正・上書き保存) */}
                           <button
+                            type="button"
+                            onClick={() => onEditRecord(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:text-blue-900 rounded-md border border-blue-200 transition-colors shadow-2xs cursor-pointer"
+                            title="通話ナビに戻って修正・上書き保存"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>修正</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setSelectedRecordForPrint(r)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-md transition-colors"
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
                             title="カルテ・帳票印刷"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => onDeleteRecord(r.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                            type="button"
+                            onClick={() => setRecordToDelete(r)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                             title="削除"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -413,7 +429,49 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       <PrintSheetModal
         record={selectedRecordForPrint}
         onClose={() => setSelectedRecordForPrint(null)}
+        onEditRecord={onEditRecord}
       />
+
+      {/* Deletion Confirmation Modal */}
+      {recordToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">記録カルテの削除</h3>
+                <p className="text-xs text-slate-500">この操作は取り消せません</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200 mb-5">
+              店舗「<strong className="text-slate-900 font-bold">{recordToDelete.storeName}</strong>」のヒアリング記録（受付日時: {recordToDelete.timestamp}）を削除してもよろしいですか？
+            </p>
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRecordToDelete(null)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = recordToDelete.id;
+                  setRecordToDelete(null);
+                  onDeleteRecord(targetId);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>削除する</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

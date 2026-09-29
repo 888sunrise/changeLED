@@ -71,7 +71,7 @@ const COLUMN_SPECS: { key: keyof StoreRecord; col: string; label: string; aliase
   { key: 'remarks1', col: 'J', label: '備考欄1', aliases: ['備考欄1', '備考1', '備考'] },
   { key: 'category', col: 'K', label: 'カテゴリ', aliases: ['カテゴリ', '設置区分', '店舗区分'] },
   { key: 'hasDrawing', col: 'L', label: '図面有無', aliases: ['図面有無', '図面'] },
-  { key: 'phoneStatus', col: 'M', label: '電話', aliases: ['電話', '架電', '電話ステータス'] },
+  { key: 'phoneContact', col: 'M', label: '電話口担当', aliases: ['電話口担当', '電話口担当者', '電話口', '対応者', '対応者氏名', '電話', '担当者'] },
   { key: 'surveyAssignee', col: 'N', label: '調査担当', aliases: ['調査担当', '現地調査担当'] },
   { key: 'surveyDate', col: 'O', label: '調査日', aliases: ['調査日', '訪問日', '訪問予定日'] },
   { key: 'surveyDocCollection', col: 'P', label: '調査資料回収', aliases: ['調査資料回収', '資料回収'] },
@@ -80,6 +80,7 @@ const COLUMN_SPECS: { key: keyof StoreRecord; col: string; label: string; aliase
   { key: 'workAssignee', col: 'S', label: '作業担当', aliases: ['作業担当', '工事担当'] },
   { key: 'scheduleNotice', col: 'T', label: '日程連絡', aliases: ['日程連絡', '日程案内'] },
   { key: 'completion', col: 'U', label: '完了', aliases: ['完了', '完了ステータス'] },
+  { key: 'callStatus', col: 'V', label: '電話状況', aliases: ['電話状況', '架電状況', '電話ステータス', '架電ステータス', '架電結果'] },
 ];
 
 export const CsvDiffImportModal: React.FC<CsvDiffImportModalProps> = ({
@@ -267,7 +268,9 @@ export const CsvDiffImportModal: React.FC<CsvDiffImportModalProps> = ({
           remarks1: colMapping.remarks1 !== undefined ? (row[colMapping.remarks1] || '').trim() : '',
           category: colMapping.category !== undefined && (row[colMapping.category] || '').trim() ? (row[colMapping.category] || '').trim() : '未設定',
           hasDrawing: colMapping.hasDrawing !== undefined ? (row[colMapping.hasDrawing] || '').trim() : '',
-          phoneStatus: colMapping.phoneStatus !== undefined && (row[colMapping.phoneStatus] || '').trim() ? (row[colMapping.phoneStatus] || '').trim() : '未架電',
+          phoneContact: colMapping.phoneContact !== undefined ? (row[colMapping.phoneContact] || '').trim() : '',
+          callStatus: colMapping.callStatus !== undefined && (row[colMapping.callStatus] || '').trim() ? (row[colMapping.callStatus] || '').trim() : '未架電',
+          phoneStatus: colMapping.callStatus !== undefined && (row[colMapping.callStatus] || '').trim() ? (row[colMapping.callStatus] || '').trim() : '未架電',
           surveyAssignee: colMapping.surveyAssignee !== undefined ? (row[colMapping.surveyAssignee] || '').trim() : '',
           surveyDate: colMapping.surveyDate !== undefined ? (row[colMapping.surveyDate] || '').trim() : '',
           surveyDocCollection: colMapping.surveyDocCollection !== undefined && (row[colMapping.surveyDocCollection] || '').trim() ? (row[colMapping.surveyDocCollection] || '').trim() : '未回収',
@@ -281,7 +284,7 @@ export const CsvDiffImportModal: React.FC<CsvDiffImportModalProps> = ({
         const newDiffs: FieldDiff[] = [
           {
             fieldKey: 'storeName',
-            columnLetter: 'A〜U',
+            columnLetter: 'A〜V',
             fieldLabel: '新規店舗登録',
             oldValue: '（未登録）',
             newValue: `${newStore.storeName} (${newStore.storeCode})`,
@@ -321,11 +324,12 @@ export const CsvDiffImportModal: React.FC<CsvDiffImportModalProps> = ({
           }
 
           // Fallback for status columns when CSV has blank/empty cell
-          // P: 調査資料回収, Q: 置き換え依頼, R: 商品手配, M: 電話, T: 日程連絡, U: 完了
+          // P: 調査資料回収, Q: 置き換え依頼, R: 商品手配, T: 日程連絡, U: 完了, V: 電話状況
           const DEFAULT_FALLBACK_MAP: Partial<Record<keyof StoreRecord, string>> = {
             surveyDocCollection: '未回収',
             replacementRequest: '未依頼',
             itemOrdering: '未手配',
+            callStatus: '未架電',
             phoneStatus: '未架電',
             scheduleNotice: '未連絡',
             completion: '未完了',

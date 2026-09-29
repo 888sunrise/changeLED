@@ -80,7 +80,9 @@ export function sanitizeStoreRecord(rec: StoreRecord): Record<string, any> {
     remarks1: String(rec.remarks1 ?? '').trim(),
     category: String(rec.category ?? '未設定').trim() || '未設定',
     hasDrawing: String(rec.hasDrawing ?? '').trim(),
-    phoneStatus: String(rec.phoneStatus ?? '未架電').trim() || '未架電',
+    phoneContact: String(rec.phoneContact ?? '').trim(),
+    callStatus: String(rec.callStatus ?? rec.phoneStatus ?? '未架電').trim() || '未架電',
+    phoneStatus: String(rec.callStatus ?? rec.phoneStatus ?? '未架電').trim() || '未架電',
     surveyAssignee: String(rec.surveyAssignee ?? '').trim(),
     surveyDate: String(rec.surveyDate ?? '').trim(),
     surveyDocCollection: String(rec.surveyDocCollection ?? '未回収').trim() || '未回収',
@@ -115,7 +117,16 @@ export function subscribeStoreRecords(
 
         const items: StoreRecord[] = [];
         snapshot.forEach((docSnap) => {
-          items.push(docSnap.data() as StoreRecord);
+          const d = docSnap.data() as any;
+          const phoneContact = typeof d.phoneContact === 'string' ? d.phoneContact : '';
+          const rawStatus = d.callStatus || d.phoneStatus || '未架電';
+          const callStatus = rawStatus === '電話するも出ず' ? '出ず' : rawStatus;
+          items.push({
+            ...d,
+            phoneContact,
+            callStatus,
+            phoneStatus: callStatus,
+          } as StoreRecord);
         });
 
         // NO列で昇順ソート

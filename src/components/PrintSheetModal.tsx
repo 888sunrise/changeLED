@@ -4,15 +4,16 @@
  */
 
 import React from 'react';
-import { X, Printer, CheckCircle2, AlertTriangle, Key } from 'lucide-react';
+import { X, Printer, CheckCircle2, AlertTriangle, Key, Edit3 } from 'lucide-react';
 import { HearingRecord } from '../types/hearing';
 
 interface PrintSheetModalProps {
   record: HearingRecord | null;
   onClose: () => void;
+  onEditRecord?: (record: HearingRecord) => void;
 }
 
-export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClose }) => {
+export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClose, onEditRecord }) => {
   if (!record) return null;
 
   const handlePrint = () => {
@@ -28,9 +29,23 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
             <span className="font-bold text-sm text-slate-900">印刷プレビュー・帳票出力</span>
           </div>
           <div className="flex items-center gap-2">
+            {onEditRecord && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditRecord(record);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                title="通話ナビに戻って修正・上書き保存"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>通話ナビで修正</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>印刷する / PDF保存</span>

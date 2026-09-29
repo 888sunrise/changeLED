@@ -45,7 +45,10 @@ interface LiveCallSimulatorProps {
   onSaveRecord: (record: HearingRecord) => void;
   onGoToChecksheet: () => void;
   stores?: StoreRecord[];
+  records?: HearingRecord[];
   initialStore?: StoreRecord | null;
+  editingRecord?: HearingRecord | null;
+  onClearEditingRecord?: () => void;
   onUpdateStoreField?: (storeNo: number, field: keyof StoreRecord, value: any) => void;
   onSelectStore?: (store: StoreRecord) => void;
   onBackToLedger?: () => void;
@@ -55,7 +58,10 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   onSaveRecord,
   onGoToChecksheet,
   stores = [],
+  records = [],
   initialStore = null,
+  editingRecord = null,
+  onClearEditingRecord,
   onUpdateStoreField,
   onSelectStore,
   onBackToLedger,
@@ -84,6 +90,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   const [callbackExactTime, setCallbackExactTime] = useState<string>('');
   const [callbackCustomNotes, setCallbackCustomNotes] = useState<string>('');
   const [staffAwayReason, setStaffAwayReason] = useState<string>('本日公休・シフト不在');
+  const [operatorError, setOperatorError] = useState<boolean>(false);
 
   // Outcome Saved Modal state
   const [outcomeSavedModal, setOutcomeSavedModal] = useState<{
@@ -116,22 +123,23 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
   const [storeName, setStoreName] = useState(initialStore ? initialStore.storeName : '');
   const [storeId, setStoreId] = useState(initialStore ? initialStore.storeCode : '');
-  const [contactPerson, setContactPerson] = useState('');
+  const [contactPerson, setContactPerson] = useState(initialStore ? (initialStore.phoneContact || '') : '');
   const [contactRole, setContactRole] = useState('店長');
   const [phoneNumber, setPhoneNumber] = useState(initialStore ? initialStore.storeMobile : '');
 
   // Keep synced if initialStore changes
   React.useEffect(() => {
-    if (initialStore) {
+    if (initialStore && !editingRecord) {
       setSelectedStoreNo(initialStore.no);
       setStoreName(initialStore.storeName);
       setStoreId(initialStore.storeCode);
       setPhoneNumber(initialStore.storeMobile);
+      setContactPerson(initialStore.phoneContact || '');
       if (initialStore.category === 'ビルイン') setManualCategory('builtin');
       else if (initialStore.category === 'フードコート') setManualCategory('foodcourt');
       else if (initialStore.category === 'ロードサイド' || initialStore.category === 'フリスタ') setManualCategory('freesta');
     }
-  }, [initialStore]);
+  }, [initialStore, editingRecord]);
 
   // Step 2: LED Status
   const [ledStatus, setLedStatus] = useState<LedStatus | null>(null);
@@ -240,6 +248,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     setStoreName(store.storeName);
     setStoreId(store.storeCode);
     setPhoneNumber(store.storeMobile);
+    setContactPerson(store.phoneContact || '');
     if (store.category === 'ビルイン') setManualCategory('builtin');
     else if (store.category === 'フードコート') setManualCategory('foodcourt');
     else if (store.category === 'ロードサイド' || store.category === 'フリスタ') setManualCategory('freesta');
@@ -253,9 +262,10 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
   const handleSaveNonConnectedStatus = (chosenStatus: CallStatusOption) => {
     if (!operatorName) {
-      alert('架電オペレーターを選択してください（比嘉、栗木、飯野、吉原、その他）');
+      setOperatorError(true);
       return;
     }
+    setOperatorError(false);
 
     let statusLabel = '';
     let phoneStatusVal: string = '未架電';
@@ -266,8 +276,8 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     const nowDate = new Date().toLocaleDateString('ja-JP');
 
     if (chosenStatus === 'no_answer') {
-      statusLabel = '電話するも出ず';
-      phoneStatusVal = '電話するも出ず';
+      statusLabel = '出ず';
+      phoneStatusVal = '出ず';
       remarkAddition = `【出ず】${nowDate} ${nowTime} (${noAnswerDetail})`;
       fullNotes = `電話するも応答なし。状況: ${noAnswerDetail} (架電: ${operatorName})`;
     } else if (chosenStatus === 'voicemail') {
@@ -295,8 +305,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
     // 1. Update master store in Firestore
     if (selectedStoreNo && onUpdateStoreField) {
+      onUpdateStoreField(selectedStoreNo, 'callStatus', phoneStatusVal);
       onUpdateStoreField(selectedStoreNo, 'phoneStatus', phoneStatusVal);
       onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
+      if (callbackStaffName || contactPerson) {
+        onUpdateStoreField(selectedStoreNo, 'phoneContact', callbackStaffName || contactPerson);
+      }
 
       const curStore = stores.find((s) => s.no === selectedStoreNo);
       const existingRemark = curStore?.remarks1 || '';
@@ -304,11 +318,17 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       onUpdateStoreField(selectedStoreNo, 'remarks1', newRemark);
     }
 
-    // 2. Save Hearing Record
+    // 2. Save Hearing Record (Overwrites if existing record exists for same store)
+    const targetId = existingRecordForSelectedStore ? existingRecordForSelectedStore.id : `rec-${Date.now()}`;
+    const baseTimestamp = existingRecordForSelectedStore ? existingRecordForSelectedStore.timestamp.split(' (')[0] : '';
+    const finalTimestamp = existingRecordForSelectedStore
+      ? `${baseTimestamp} (更新: ${nowDate} ${nowTime})`
+      : new Date().toLocaleString('ja-JP');
+
     const scheduledTimeStr = chosenStatus === 'reschedule' ? `${callbackDate} ${callbackExactTime || callbackTimeSlot}` : undefined;
     const newHearing: HearingRecord = {
-      id: `rec-${Date.now()}`,
-      timestamp: new Date().toLocaleString('ja-JP'),
+      id: targetId,
+      timestamp: finalTimestamp,
       operatorName,
       storeName: storeName || (selectedStoreNo ? `NO.${selectedStoreNo} 店舗` : '無題店舗'),
       storeId,
@@ -368,6 +388,72 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   };
 
   const computedCategory = getComputedCategory();
+
+  // Existing record check for selected store
+  const existingRecordForSelectedStore = React.useMemo(() => {
+    if (editingRecord) return editingRecord;
+    if (!storeName && !storeId && !selectedStoreNo) return null;
+    return (
+      records.find((r) => {
+        if (storeId && r.storeId && r.storeId.trim() !== '' && r.storeId.trim().toLowerCase() === storeId.trim().toLowerCase()) return true;
+        if (storeName && r.storeName && r.storeName.trim() !== '' && r.storeName !== '無題店舗' && r.storeName.trim() === storeName.trim()) return true;
+        return false;
+      }) || null
+    );
+  }, [editingRecord, storeName, storeId, selectedStoreNo, records]);
+
+  // Keep synced if editingRecord changes
+  React.useEffect(() => {
+    if (editingRecord) {
+      setStoreName(editingRecord.storeName || '');
+      setStoreId(editingRecord.storeId || '');
+      setPhoneNumber(editingRecord.phoneNumber || '');
+      setContactPerson(editingRecord.contactPerson || '');
+      setContactRole(editingRecord.contactRole || '店長');
+      if (editingRecord.operatorName) {
+        if (['比嘉', '栗木', '飯野', '吉原'].includes(editingRecord.operatorName)) {
+          setOperatorSelect(editingRecord.operatorName);
+        } else {
+          setOperatorSelect('その他');
+          setCustomOperator(editingRecord.operatorName);
+        }
+      }
+      setLedStatus(editingRecord.ledStatus || null);
+      setPartialAreas(editingRecord.partialAreas || '');
+      if (editingRecord.locationCategory === 'builtin') setManualCategory('builtin');
+      else if (editingRecord.locationCategory === 'foodcourt') setManualCategory('foodcourt');
+      else if (editingRecord.locationCategory === 'freesta') setManualCategory('freesta');
+      else setManualCategory(null);
+
+      setIsTenantInBuilding(editingRecord.locationDetails?.isTenantInBuilding ?? null);
+      setIsCounterOnly(editingRecord.locationDetails?.isCounterOnly ?? null);
+      setHasDedicatedParkingLights(editingRecord.locationDetails?.hasDedicatedParkingLights ?? null);
+
+      const startD = editingRecord.visitPeriodStart || editingRecord.preferredDate1 || '';
+      const endD = editingRecord.visitPeriodEnd || editingRecord.preferredDate2 || '';
+      setVisitPeriodStart(startD);
+      setVisitPeriodEnd(endD);
+      setPreferredDate1(startD);
+      setPreferredDate2(endD);
+      if (editingRecord.preferredTimeSlot1) setTimeSlot1(editingRecord.preferredTimeSlot1);
+      if (editingRecord.preferredTimeSlot2) setTimeSlot2(editingRecord.preferredTimeSlot2);
+      if (editingRecord.workTiming) setWorkTiming(editingRecord.workTiming);
+      if (editingRecord.keyCustody) setKeyCustody(editingRecord.keyCustody);
+      setLockProcedure(editingRecord.lockProcedure || '');
+      setEmergencyContact(editingRecord.emergencyContact || '');
+      setNotes(editingRecord.notes || '');
+
+      // Check if store matches in stores list
+      const matched = stores.find(
+        (s) =>
+          (editingRecord.storeId && s.storeCode === editingRecord.storeId) ||
+          s.storeName === editingRecord.storeName
+      );
+      if (matched) {
+        setSelectedStoreNo(matched.no);
+      }
+    }
+  }, [editingRecord, stores]);
 
   // Determine survey requirement:
   // If all_led -> not_required (End of case)
@@ -472,9 +558,22 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   };
 
   const handleSave = () => {
+    if (!operatorName) {
+      setOperatorError(true);
+      return;
+    }
+    setOperatorError(false);
+
+    const targetId = existingRecordForSelectedStore ? existingRecordForSelectedStore.id : `rec-${Date.now()}`;
+    const baseTimestamp = existingRecordForSelectedStore ? existingRecordForSelectedStore.timestamp.split(' (')[0] : '';
+    const nowTimeStr = `${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+    const finalTimestamp = existingRecordForSelectedStore
+      ? `${baseTimestamp} (修正: ${nowTimeStr})`
+      : new Date().toLocaleString('ja-JP');
+
     const record: HearingRecord = {
-      id: `rec-${Date.now()}`,
-      timestamp: new Date().toLocaleString('ja-JP'),
+      id: targetId,
+      timestamp: finalTimestamp,
       operatorName,
       storeName: storeName || '無題店舗',
       storeId,
@@ -503,6 +602,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       emergencyContact,
       notes: notes + (dayPreferenceNotes ? ` [時間帯・曜日要望: ${dayPreferenceNotes}]` : ''),
       status: 'completed',
+      callStatus: '完了',
     };
 
     onSaveRecord(record);
@@ -519,7 +619,11 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           : '未設定';
 
       onUpdateStoreField(selectedStoreNo, 'category', catJpn);
+      onUpdateStoreField(selectedStoreNo, 'callStatus', '完了');
       onUpdateStoreField(selectedStoreNo, 'phoneStatus', '完了');
+      if (contactPerson) {
+        onUpdateStoreField(selectedStoreNo, 'phoneContact', contactPerson);
+      }
       if (ledStatus === 'all_led') {
         onUpdateStoreField(selectedStoreNo, 'remarks1', '全灯LED済み（訪問調査不要）');
         onUpdateStoreField(selectedStoreNo, 'surveyDocCollection', '不要');
@@ -547,6 +651,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   };
 
   const handleReset = () => {
+    if (onClearEditingRecord) onClearEditingRecord();
     setStoreName('');
     setStoreId('');
     setContactPerson('');
@@ -573,6 +678,38 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
+      {/* Existing Record / Edit Mode Banner */}
+      {existingRecordForSelectedStore && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5 text-amber-900 font-semibold">
+            <span className="px-2.5 py-1 bg-amber-200 text-amber-900 rounded-md font-bold text-xs">
+              {editingRecord ? 'カルテ修正モード' : 'カルテ登録済み店舗'}
+            </span>
+            <span>
+              「{storeName || existingRecordForSelectedStore.storeName}」には既に記録カルテ（受付: {existingRecordForSelectedStore.timestamp}）が存在します。変更して保存すると<strong>既存カルテに上書き保存</strong>されます。
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onGoToChecksheet}
+              className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg font-medium transition-colors cursor-pointer"
+            >
+              記録カルテ一覧を見る
+            </button>
+            {editingRecord && onClearEditingRecord && (
+              <button
+                type="button"
+                onClick={onClearEditingRecord}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold transition-colors cursor-pointer"
+              >
+                修正を解除
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top Console Bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -591,25 +728,30 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
               <span className="text-slate-500 font-medium">TEL:</span>
               <span className="font-mono font-bold text-blue-700">{phoneNumber || '-'}</span>
               <span className="text-slate-300">|</span>
-              <span className="text-slate-500 font-medium">電話ステータス(M):</span>
+              <span className="text-slate-500 font-medium">電話口担当(M):</span>
+              <span className="font-bold text-slate-800">
+                {contactPerson || stores.find((s) => s.no === selectedStoreNo)?.phoneContact || '未入力'}
+              </span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-500 font-medium">電話状況(V):</span>
               <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '完了'
+                (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '完了'
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '電話するも出ず'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '出ず' || (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '電話するも出ず'
                   ? 'bg-rose-50 text-rose-800 border-rose-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '留守電'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '留守電'
                   ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '折返待ち'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '折返待ち'
                   ? 'bg-purple-50 text-purple-800 border-purple-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '再連絡待ち'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '再連絡待ち'
                   ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '担当不在'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '担当不在'
                   ? 'bg-orange-50 text-orange-800 border-orange-200'
-                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '通話中'
+                  : (stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus) === '通話中'
                   ? 'bg-blue-50 text-blue-800 border-blue-200'
                   : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}>
-                {stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
+                {stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
               </span>
             </div>
           )}
@@ -782,14 +924,20 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    対応者氏名 <span className="text-rose-500">*</span>
+                    対応者氏名（店舗台帳 M:電話口担当 に即時反映） <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     placeholder="例: 佐藤 健一"
                     value={contactPerson}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setContactPerson(val);
+                      if (selectedStoreNo && onUpdateStoreField) {
+                        onUpdateStoreField(selectedStoreNo, 'phoneContact', val);
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
                   />
                 </div>
 
@@ -818,11 +966,14 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       onChange={(e) => {
                         const val = e.target.value;
                         setOperatorSelect(val);
+                        if (val) setOperatorError(false);
                         try {
                           localStorage.setItem('led_operator_select', val);
                         } catch {}
                       }}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium text-slate-800"
+                      className={`w-full px-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium text-slate-800 ${
+                        operatorError ? 'border-rose-400 bg-rose-50/50' : 'border-slate-200'
+                      }`}
                     >
                       <option value="">-- オペレーターを選択 --</option>
                       <option value="比嘉">比嘉</option>
@@ -832,6 +983,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       <option value="その他">その他（自由入力）</option>
                     </select>
 
+                    {operatorError && (
+                      <div className="text-[11px] text-rose-600 font-bold">
+                        ※架電オペレーターを選択してください
+                      </div>
+                    )}
+
                     {operatorSelect === 'その他' && (
                       <input
                         type="text"
@@ -840,6 +997,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         onChange={(e) => {
                           const val = e.target.value;
                           setCustomOperator(val);
+                          if (val.trim()) setOperatorError(false);
                           try {
                             localStorage.setItem('led_custom_operator', val);
                           } catch {}
@@ -867,16 +1025,16 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                         </span>
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        電話した結果（出ず・留守電・折返・再連絡等）を選択すると、専用スクリプト表示や台帳（M列）への即時保存が行えます
+                        電話した結果（通話接続・出ず・留守電・折返・再連絡等）を選択すると、専用スクリプト表示や台帳（V:電話状況・M:電話口担当）への保存が行えます
                       </p>
                     </div>
                   </div>
 
                   {selectedStoreNo && (
                     <div className="text-[11px] text-slate-500 flex items-center gap-1 self-start sm:self-auto">
-                      <span>現在の台帳状態:</span>
+                      <span>現在の電話状況(V):</span>
                       <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                        {stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
+                        {stores.find((s) => s.no === selectedStoreNo)?.callStatus || stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
                       </span>
                     </div>
                   )}
@@ -1042,8 +1200,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       <button
                         onClick={() => {
                           if (selectedStoreNo && onUpdateStoreField) {
+                            onUpdateStoreField(selectedStoreNo, 'callStatus', '通話中');
                             onUpdateStoreField(selectedStoreNo, 'phoneStatus', '通話中');
                             onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
+                            if (contactPerson) {
+                              onUpdateStoreField(selectedStoreNo, 'phoneContact', contactPerson);
+                            }
                           }
                           setCurrentStep(2);
                         }}
@@ -2370,10 +2532,16 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={handleSave}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-xs"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
-                    <span>{saveSuccess ? '保存完了！' : 'チェックシート履歴へ保存'}</span>
+                    <span>
+                      {saveSuccess
+                        ? (existingRecordForSelectedStore ? '上書き保存完了！' : '保存完了！')
+                        : existingRecordForSelectedStore
+                        ? '【上書き保存】カルテを更新する'
+                        : 'チェックシート履歴へ保存'}
+                    </span>
                   </button>
 
                   <button
@@ -2411,11 +2579,19 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs mb-5">
               <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">電話ステータス（M列）：</span>
+                <span className="text-slate-500 font-medium">電話状況（V列）：</span>
                 <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
                   {outcomeSavedModal.statusLabel}
                 </span>
               </div>
+              {contactPerson && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">電話口担当（M列）：</span>
+                  <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {contactPerson} 様
+                  </span>
+                </div>
+              )}
               {outcomeSavedModal.scheduledTime && (
                 <div className="flex justify-between items-center text-cyan-800">
                   <span className="font-medium">📅 再連絡予定日時：</span>

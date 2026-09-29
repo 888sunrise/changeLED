@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// A〜U列定義に合わせたStoreRecordインターフェース
+// A〜V列定義に合わせたStoreRecordインターフェース
 // A〜I列: 入力禁止（マスタ情報）
-// J〜U列: 入力および選択方式（ヒアリング・業務進捗入力）
+// J〜V列: 入力および選択方式（ヒアリング・業務進捗入力）
 
 export type LocationCategory = 'ビルイン' | 'フードコート' | 'ロードサイド' | 'フリスタ' | '未設定' | string;
 
 export type PhoneStatus =
   | '未架電'
   | '通話中'
+  | '出ず'
   | '電話するも出ず'
   | '留守電'
   | '折返待ち'
@@ -44,11 +45,11 @@ export interface StoreRecord {
   storeMobile: string;              // H: 店舗携帯番号
   managementType: string;           // I: 運営（直営 / 社員FC / FC 等）
 
-  // J〜U列（入力および選択方式）
+  // J〜V列（入力および選択方式）
   remarks1: string;                 // J: 備考欄1 (例: "LED,キッチン不明", "LED済み" 等)
   category: LocationCategory;       // K: カテゴリ（ビルイン / フードコート / ロードサイド）
   hasDrawing: string;               // L: 図面有無（"○" または ""）
-  phoneStatus: PhoneStatus;         // M: 電話（未架電 / 完了 / 不在 / 通話中 等）
+  phoneContact?: string;            // M: 電話口担当（対応者氏名）
   surveyAssignee: string;           // N: 調査担当
   surveyDate: string;               // O: 調査日（YYYY-MM-DD 等）
   surveyDocCollection: SurveyDocStatus; // P: 調査資料回収（未回収 / 回収済 / 不要）
@@ -57,6 +58,10 @@ export interface StoreRecord {
   workAssignee: string;             // S: 作業担当
   scheduleNotice: ScheduleNoticeStatus; // T: 日程連絡（未連絡 / 連絡済）
   completion: CompletionStatus;     // U: 完了（未完了 / 完了 / 保留）
+  callStatus?: PhoneStatus;         // V: 電話状況（未架電 / 完了 / 出ず / 留守電 / 折返待ち / 再連絡待ち / 担当不在 等）
+
+  // 互換性保持フィールド
+  phoneStatus?: PhoneStatus;
 
   // システム用管理フィールド
   updatedAt?: string;
