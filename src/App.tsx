@@ -33,18 +33,18 @@ const STORE_STORAGE_KEY = 'led_stores_records_v2';
 export default function App() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'simulator' | 'flowchart' | 'scripts' | 'checksheet'>('ledger');
 
-  // Stores (A〜U columns)
+  // Stores (A〜U columns) - Cloud Firestore is master
   const [stores, setStores] = useState<StoreRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORE_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 27) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch {}
-    return INITIAL_STORE_RECORDS;
+    return [];
   });
 
   // Selected Store for calling
@@ -114,11 +114,21 @@ export default function App() {
     }
   };
 
-  // Bulk update store records (CSV Diff Import)
+  // Bulk update store records (CSV Diff Import) - persists directly to Firestore
   const handleBulkUpdateStores = async (updatedList: StoreRecord[]) => {
     if (!updatedList || updatedList.length === 0) return;
     const updateMap = new Map(updatedList.map((s) => [s.no, s]));
-    setStores((prev) => prev.map((s) => updateMap.get(s.no) || s));
+    setStores((prev) => {
+      const existingNos = new Set(prev.map((s) => s.no));
+      const updatedExisting = prev.map((s) => updateMap.get(s.no) || s);
+      const newItems = updatedList.filter((s) => !existingNos.has(s.no));
+      const combined = [...updatedExisting, ...newItems].sort((a, b) => a.no - b.no);
+      try {
+        localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify(combined));
+      } catch {}
+      return combined;
+    });
+
     try {
       setSyncStatus('syncing');
       await bulkUpdateStoreRecords(updatedList);
@@ -126,7 +136,15 @@ export default function App() {
     } catch (err) {
       console.error('Failed to bulk update stores in Firestore:', err);
       setSyncStatus('offline');
+      throw err;
     }
+  };
+
+  const handleClearStores = () => {
+    setStores([]);
+    try {
+      localStorage.removeItem(STORE_STORAGE_KEY);
+    } catch {}
   };
 
   // Update single field of store
@@ -218,6 +236,7 @@ export default function App() {
             onBulkUpdateStores={handleBulkUpdateStores}
             onSelectStoreForCall={handleSelectStoreForCall}
             onResetDefaults={() => resetAllStoreRecords()}
+            onClearStores={handleClearStores}
           />
         )}
 

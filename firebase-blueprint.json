@@ -38,12 +38,46 @@
         "status": { "type": "string" }
       },
       "required": ["id", "storeName", "ledStatus", "surveyRequirement", "operatorName"]
+    },
+    "StoreRecord": {
+      "title": "StoreRecord",
+      "description": "全173店舗のA〜U列進捗管理台帳データ",
+      "type": "object",
+      "properties": {
+        "no": { "type": "number" },
+        "storeCode": { "type": "string" },
+        "representativePhone": { "type": "string" },
+        "storeName": { "type": "string" },
+        "address1": { "type": "string" },
+        "address2": { "type": "string" },
+        "buildingName": { "type": "string" },
+        "storeMobile": { "type": "string" },
+        "managementType": { "type": "string" },
+        "remarks1": { "type": "string" },
+        "category": { "type": "string" },
+        "hasDrawing": { "type": "string" },
+        "phoneStatus": { "type": "string" },
+        "surveyAssignee": { "type": "string" },
+        "surveyDate": { "type": "string" },
+        "surveyDocCollection": { "type": "string" },
+        "replacementRequest": { "type": "string" },
+        "itemOrdering": { "type": "string" },
+        "workAssignee": { "type": "string" },
+        "scheduleNotice": { "type": "string" },
+        "completion": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["no", "storeCode", "storeName"]
     }
   },
   "firestore": {
     "/hearing_records/{recordId}": {
       "entity": "HearingRecord",
       "description": "店舗ごとのヒアリング記録一覧"
+    },
+    "/stores_led_records/{storeId}": {
+      "entity": "StoreRecord",
+      "description": "全店舗管理台帳レコード（A〜U列）"
     }
   }
 }

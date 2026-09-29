@@ -252,7 +252,51 @@ export const CsvDiffImportModal: React.FC<CsvDiffImportModalProps> = ({
       }
 
       if (!currentStore) {
-        unmatchedRowsCount++;
+        // 台帳が0件（初期化済み）の場合、または新規店舗の場合は新規店舗レコードとして構築
+        const newNo = !isNaN(rawNo) ? rawNo : (items.length + 1);
+        const newStore: StoreRecord = {
+          no: newNo,
+          storeCode: rawCode || String(newNo).padStart(6, '0'),
+          representativePhone: colMapping.representativePhone !== undefined ? (row[colMapping.representativePhone] || '').trim() : '',
+          storeName: rawName || `店舗 NO.${newNo}`,
+          address1: colMapping.address1 !== undefined ? (row[colMapping.address1] || '').trim() : '',
+          address2: colMapping.address2 !== undefined ? (row[colMapping.address2] || '').trim() : '',
+          buildingName: colMapping.buildingName !== undefined ? (row[colMapping.buildingName] || '').trim() : '',
+          storeMobile: colMapping.storeMobile !== undefined ? (row[colMapping.storeMobile] || '').trim() : '',
+          managementType: colMapping.managementType !== undefined ? (row[colMapping.managementType] || '').trim() : '直営',
+          remarks1: colMapping.remarks1 !== undefined ? (row[colMapping.remarks1] || '').trim() : '',
+          category: colMapping.category !== undefined && (row[colMapping.category] || '').trim() ? (row[colMapping.category] || '').trim() : '未設定',
+          hasDrawing: colMapping.hasDrawing !== undefined ? (row[colMapping.hasDrawing] || '').trim() : '',
+          phoneStatus: colMapping.phoneStatus !== undefined && (row[colMapping.phoneStatus] || '').trim() ? (row[colMapping.phoneStatus] || '').trim() : '未架電',
+          surveyAssignee: colMapping.surveyAssignee !== undefined ? (row[colMapping.surveyAssignee] || '').trim() : '',
+          surveyDate: colMapping.surveyDate !== undefined ? (row[colMapping.surveyDate] || '').trim() : '',
+          surveyDocCollection: colMapping.surveyDocCollection !== undefined && (row[colMapping.surveyDocCollection] || '').trim() ? (row[colMapping.surveyDocCollection] || '').trim() : '未回収',
+          replacementRequest: colMapping.replacementRequest !== undefined && (row[colMapping.replacementRequest] || '').trim() ? (row[colMapping.replacementRequest] || '').trim() : '未依頼',
+          itemOrdering: colMapping.itemOrdering !== undefined && (row[colMapping.itemOrdering] || '').trim() ? (row[colMapping.itemOrdering] || '').trim() : '未手配',
+          workAssignee: colMapping.workAssignee !== undefined ? (row[colMapping.workAssignee] || '').trim() : '',
+          scheduleNotice: colMapping.scheduleNotice !== undefined && (row[colMapping.scheduleNotice] || '').trim() ? (row[colMapping.scheduleNotice] || '').trim() : '未連絡',
+          completion: colMapping.completion !== undefined && (row[colMapping.completion] || '').trim() ? (row[colMapping.completion] || '').trim() : '未完了',
+        };
+
+        const newDiffs: FieldDiff[] = [
+          {
+            fieldKey: 'storeName',
+            columnLetter: 'A〜U',
+            fieldLabel: '新規店舗登録',
+            oldValue: '（未登録）',
+            newValue: `${newStore.storeName} (${newStore.storeCode})`,
+          },
+        ];
+
+        items.push({
+          storeNo: newStore.no,
+          storeCode: newStore.storeCode,
+          storeName: newStore.storeName,
+          diffs: newDiffs,
+          currentRecord: newStore,
+          updatedRecord: newStore,
+        });
+        matchedCount++;
         continue;
       }
 

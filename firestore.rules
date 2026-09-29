@@ -11,17 +11,13 @@ service cloud.firestore {
     }
 
     match /hearing_records/{recordId} {
-      allow read: if isValidId(recordId);
-      allow create: if isValidId(recordId);
-      allow update: if isValidId(recordId);
-      allow delete: if isValidId(recordId);
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(recordId);
     }
 
     match /stores_led_records/{storeId} {
-      allow read: if isValidId(storeId);
-      allow create: if isValidId(storeId);
-      allow update: if isValidId(storeId);
-      allow delete: if isValidId(storeId);
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(storeId);
     }
   }
 }

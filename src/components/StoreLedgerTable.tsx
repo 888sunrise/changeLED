@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { StoreRecord } from '../types/hearing';
 import { CsvDiffImportModal, DiffReportSummary } from './CsvDiffImportModal';
+import { AdminDataManagementModal } from './AdminDataManagementModal';
 
 interface StoreLedgerTableProps {
   records: StoreRecord[];
@@ -37,6 +38,7 @@ interface StoreLedgerTableProps {
   onBulkUpdateStores?: (updatedStores: StoreRecord[]) => Promise<void>;
   onSelectStoreForCall: (store: StoreRecord) => void;
   onResetDefaults?: () => void;
+  onClearStores?: () => void;
 }
 
 export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
@@ -45,6 +47,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   onBulkUpdateStores,
   onSelectStoreForCall,
   onResetDefaults,
+  onClearStores,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -54,6 +57,9 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   const [editingStoreNo, setEditingStoreNo] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<StoreRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Admin Data Management Modal (Hidden/Protected Feature)
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
   // CSV Diff Import Modal & Report
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
@@ -379,6 +385,16 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             >
               <Download className="w-3.5 h-3.5" />
               <span>A〜U列 CSV出力</span>
+            </button>
+
+            {/* Hidden / Protected Admin Console Button */}
+            <button
+              onClick={() => setIsAdminModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-2xs whitespace-nowrap"
+              title="管理者専用（データ初期化・保守・リストア）"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">管理者制御</span>
             </button>
           </div>
         </div>
@@ -727,7 +743,42 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {filteredRecords.length === 0 ? (
+              {records.length === 0 ? (
+                <tr>
+                  <td colSpan={22} className="py-16 text-center">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-xs">
+                        <Table className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-bold text-slate-800 text-sm">
+                        現在、台帳データは未登録です（データクリア状態）
+                      </h4>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Cloud Firestore上の台帳データは初期化され0件となっています。<br />
+                        エクセル管理中の全173店舗CSVをインポートして最新台帳を構築するか、管理者メニューから初期マスタを投入してください。
+                      </p>
+                      <div className="pt-2 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsDiffModalOpen(true)}
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>CSV差分・全店舗インポートを開く</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsAdminModalOpen(true)}
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-slate-500" />
+                          <span>管理者メニュー（初期化・マスタ投入）</span>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={22} className="py-12 text-center text-slate-400">
                     条件に一致する店舗データがありません。
@@ -1354,6 +1405,23 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
         onApplyDiff={handleApplyDiff}
         existingReport={lastImportReport}
         onSaveReport={handleSaveReport}
+      />
+
+      {/* Admin Data Management & Initialization Modal (Protected Hidden Feature) */}
+      <AdminDataManagementModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        currentCount={records.length}
+        onClearComplete={() => {
+          if (onClearStores) onClearStores();
+          showToast('Cloud Firestore上の全店舗データを初期化（0件）しました');
+        }}
+        onSeedComplete={() => {
+          showToast('初期173店舗データをCloud Firestoreに投入しました');
+        }}
+        onOpenCsvImport={() => {
+          setIsDiffModalOpen(true);
+        }}
       />
     </div>
   );
