@@ -247,6 +247,8 @@ export default function App() {
             onUpdateStoreField={handleUpdateStoreField}
             onSaveRecord={handleSaveRecord}
             onGoToChecksheet={() => setActiveTab('checksheet')}
+            onSelectStore={handleSelectStoreForCall}
+            onBackToLedger={() => setActiveTab('ledger')}
           />
         )}
 

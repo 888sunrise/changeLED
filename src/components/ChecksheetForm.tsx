@@ -316,7 +316,23 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
-                        {isDone ? (
+                        {r.callStatus ? (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            r.callStatus === '電話するも出ず'
+                              ? 'bg-rose-100 text-rose-800'
+                              : r.callStatus === '留守電'
+                              ? 'bg-amber-100 text-amber-800'
+                              : r.callStatus === '折返待ち'
+                              ? 'bg-purple-100 text-purple-800'
+                              : r.callStatus === '再連絡待ち'
+                              ? 'bg-cyan-100 text-cyan-800'
+                              : r.callStatus === '担当不在'
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            <span>{r.callStatus}</span>
+                          </span>
+                        ) : isDone ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>調査不要・案件終了</span>
@@ -330,7 +346,11 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-xs">
-                        {isDone ? (
+                        {r.callbackScheduledAt ? (
+                          <div className="font-semibold text-cyan-800 bg-cyan-50 px-2.5 py-1 rounded border border-cyan-200 inline-block">
+                            <span>📅 再連絡予約: {r.callbackScheduledAt}</span>
+                          </div>
+                        ) : isDone ? (
                           <span className="text-slate-400">訪問なし</span>
                         ) : (
                           <div>

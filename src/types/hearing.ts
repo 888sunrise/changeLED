@@ -9,7 +9,18 @@
 
 export type LocationCategory = 'ビルイン' | 'フードコート' | 'ロードサイド' | 'フリスタ' | '未設定' | string;
 
-export type PhoneStatus = '未架電' | '通話中' | '不在/再架電' | '完了' | '担当不在' | '着信拒否' | string;
+export type PhoneStatus =
+  | '未架電'
+  | '通話中'
+  | '電話するも出ず'
+  | '留守電'
+  | '折返待ち'
+  | '担当不在'
+  | '再連絡待ち'
+  | '不在/再架電'
+  | '完了'
+  | '着信拒否'
+  | string;
 
 export type SurveyDocStatus = '未回収' | '回収済' | '不要' | string;
 
@@ -85,6 +96,10 @@ export interface HearingRecord {
   emergencyContact?: string;
   notes?: string;
   status: 'completed' | 'draft' | 'follow_up_needed';
+  // 架電結果・ステータス
+  callStatus?: string;              // 例: '電話するも出ず' | '留守電' | '折返待ち' | '再連絡待ち' | '完了'
+  callbackScheduledAt?: string;     // 再連絡日時 (YYYY-MM-DD HH:mm 等)
+  callbackNotes?: string;           // 再連絡に関するメモ
 }
 
 // 互換性およびスクリプト用の定義

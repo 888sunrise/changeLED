@@ -22,8 +22,24 @@ import {
   Sparkles,
   ArrowRight,
   Save,
+  PhoneMissed,
+  Voicemail,
+  PhoneForwarded,
+  CalendarClock,
+  UserX,
+  MessageSquare,
+  AlertCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import { HearingRecord, LedStatus, SimulatorLocationCategory, TimeSlot, KeyCustodyStatus, StoreRecord } from '../types/hearing';
+
+export type CallStatusOption =
+  | 'connected'        // つながり・ヒアリング承諾（STEP 2へ）
+  | 'no_answer'        // 電話するも出ず（呼出音のみ・話中）
+  | 'voicemail'        // 留守電（メッセージ録音）
+  | 'callback_waiting' // 折返待ち（スタッフ伝言預け）
+  | 'reschedule'       // 再連絡日時を指定（再架電予約）
+  | 'staff_away';      // 担当不在
 
 interface LiveCallSimulatorProps {
   onSaveRecord: (record: HearingRecord) => void;
@@ -31,6 +47,8 @@ interface LiveCallSimulatorProps {
   stores?: StoreRecord[];
   initialStore?: StoreRecord | null;
   onUpdateStoreField?: (storeNo: number, field: keyof StoreRecord, value: any) => void;
+  onSelectStore?: (store: StoreRecord) => void;
+  onBackToLedger?: () => void;
 }
 
 export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
@@ -39,12 +57,63 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   stores = [],
   initialStore = null,
   onUpdateStoreField,
+  onSelectStore,
+  onBackToLedger,
 }) => {
   // Selected Store from master
   const [selectedStoreNo, setSelectedStoreNo] = useState<number | null>(initialStore ? initialStore.no : null);
 
-  // Form State
-  const [operatorName, setOperatorName] = useState('山田 太郎');
+  // Call Outcome State (電話ステータス: 承諾・出ず・留守電・折返・再連絡・不在)
+  const [callOutcome, setCallOutcome] = useState<CallStatusOption>('connected');
+  const [noAnswerDetail, setNoAnswerDetail] = useState<string>('20秒以上呼出（応答なし）');
+  const [voicemailRecorded, setVoicemailRecorded] = useState<boolean>(true);
+  const [voicemailNote, setVoicemailNote] = useState<string>('');
+  const [callbackStaffName, setCallbackStaffName] = useState<string>('');
+  const [callbackExpectedTime, setCallbackExpectedTime] = useState<string>('');
+
+  // 再連絡日時（再架電予約）
+  const [callbackDate, setCallbackDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [callbackTimeSlot, setCallbackTimeSlot] = useState<string>('14:00〜16:00（アイドルタイム）');
+  const [callbackExactTime, setCallbackExactTime] = useState<string>('');
+  const [callbackCustomNotes, setCallbackCustomNotes] = useState<string>('');
+  const [staffAwayReason, setStaffAwayReason] = useState<string>('本日公休・シフト不在');
+
+  // Outcome Saved Modal state
+  const [outcomeSavedModal, setOutcomeSavedModal] = useState<{
+    statusLabel: string;
+    storeName: string;
+    scheduledTime?: string;
+    notes?: string;
+    nextStore?: StoreRecord | null;
+  } | null>(null);
+
+  // Form State - Operator Selection ('比嘉', '栗木', '吉原', 'その他')
+  const [operatorSelect, setOperatorSelect] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('led_operator_select');
+      if (saved && ['比嘉', '栗木', '吉原', 'その他'].includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return '';
+  });
+  const [customOperator, setCustomOperator] = useState<string>(() => {
+    try {
+      return localStorage.getItem('led_custom_operator') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const operatorName = operatorSelect === 'その他' ? customOperator.trim() : operatorSelect;
+
   const [storeName, setStoreName] = useState(initialStore ? initialStore.storeName : '');
   const [storeId, setStoreId] = useState(initialStore ? initialStore.storeCode : '');
   const [contactPerson, setContactPerson] = useState('');
@@ -145,6 +214,135 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     const e = toYmd(nextFri);
     handleSetVisitStart(s);
     handleSetVisitEnd(e);
+  };
+
+  const setCallbackDatePreset = (preset: 'today' | 'tomorrow' | 'day_after' | 'next_mon') => {
+    const d = new Date();
+    if (preset === 'today') {
+      // today
+    } else if (preset === 'tomorrow') {
+      d.setDate(d.getDate() + 1);
+    } else if (preset === 'day_after') {
+      d.setDate(d.getDate() + 2);
+    } else if (preset === 'next_mon') {
+      const cur = d.getDay();
+      const diff = cur === 0 ? 1 : 8 - cur;
+      d.setDate(d.getDate() + diff);
+    }
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setCallbackDate(`${year}-${month}-${day}`);
+  };
+
+  const handleSelectStore = (store: StoreRecord) => {
+    setSelectedStoreNo(store.no);
+    setStoreName(store.storeName);
+    setStoreId(store.storeCode);
+    setPhoneNumber(store.storeMobile);
+    if (store.category === 'ビルイン') setManualCategory('builtin');
+    else if (store.category === 'フードコート') setManualCategory('foodcourt');
+    else if (store.category === 'ロードサイド' || store.category === 'フリスタ') setManualCategory('freesta');
+    setCurrentStep(1);
+    setOutcomeSavedModal(null);
+    setCallOutcome('connected');
+    if (onSelectStore) {
+      onSelectStore(store);
+    }
+  };
+
+  const handleSaveNonConnectedStatus = (chosenStatus: CallStatusOption) => {
+    if (!operatorName) {
+      alert('架電オペレーターを選択してください（比嘉、栗木、吉原、その他）');
+      return;
+    }
+
+    let statusLabel = '';
+    let phoneStatusVal: string = '未架電';
+    let remarkAddition = '';
+    let fullNotes = '';
+
+    const nowTime = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    const nowDate = new Date().toLocaleDateString('ja-JP');
+
+    if (chosenStatus === 'no_answer') {
+      statusLabel = '電話するも出ず';
+      phoneStatusVal = '電話するも出ず';
+      remarkAddition = `【出ず】${nowDate} ${nowTime} (${noAnswerDetail})`;
+      fullNotes = `電話するも応答なし。状況: ${noAnswerDetail} (架電: ${operatorName})`;
+    } else if (chosenStatus === 'voicemail') {
+      statusLabel = '留守電';
+      phoneStatusVal = '留守電';
+      remarkAddition = `【留守電】${nowDate} ${nowTime} メッセージ録音済${voicemailNote ? ' ' + voicemailNote : ''}`;
+      fullNotes = `留守番電話に接続。ガイダンスに従い調査趣旨の伝言メッセージを録音。${voicemailNote} (架電: ${operatorName})`;
+    } else if (chosenStatus === 'callback_waiting') {
+      statusLabel = '折返待ち';
+      phoneStatusVal = '折返待ち';
+      remarkAddition = `【折返待ち】${nowDate} ${nowTime} 受付: ${callbackStaffName || 'スタッフ'} ${callbackExpectedTime ? ' 目安: ' + callbackExpectedTime : ''}`;
+      fullNotes = `店舗スタッフ様（${callbackStaffName || 'スタッフ'}）に用件伝達・折返し依頼済み。戻り予定: ${callbackExpectedTime || '未定'} (架電: ${operatorName})`;
+    } else if (chosenStatus === 'reschedule') {
+      statusLabel = '再連絡待ち';
+      phoneStatusVal = '再連絡待ち';
+      const timeDisplay = callbackExactTime ? callbackExactTime : callbackTimeSlot;
+      remarkAddition = `【再連絡予定】${formatDateJp(callbackDate)} ${timeDisplay}${callbackCustomNotes ? ' / ' + callbackCustomNotes : ''}`;
+      fullNotes = `店舗様より再架電日時の指定あり。再連絡予定日時: ${callbackDate} ${timeDisplay}。特記要望: ${callbackCustomNotes} (架電: ${operatorName})`;
+    } else if (chosenStatus === 'staff_away') {
+      statusLabel = '担当不在';
+      phoneStatusVal = '担当不在';
+      remarkAddition = `【担当不在】${nowDate} ${nowTime} (${staffAwayReason})`;
+      fullNotes = `店長・設備責任者不在。理由: ${staffAwayReason} (架電: ${operatorName})`;
+    }
+
+    // 1. Update master store in Firestore
+    if (selectedStoreNo && onUpdateStoreField) {
+      onUpdateStoreField(selectedStoreNo, 'phoneStatus', phoneStatusVal);
+      onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
+
+      const curStore = stores.find((s) => s.no === selectedStoreNo);
+      const existingRemark = curStore?.remarks1 || '';
+      const newRemark = existingRemark ? `${existingRemark} / ${remarkAddition}` : remarkAddition;
+      onUpdateStoreField(selectedStoreNo, 'remarks1', newRemark);
+    }
+
+    // 2. Save Hearing Record
+    const scheduledTimeStr = chosenStatus === 'reschedule' ? `${callbackDate} ${callbackExactTime || callbackTimeSlot}` : undefined;
+    const newHearing: HearingRecord = {
+      id: `rec-${Date.now()}`,
+      timestamp: new Date().toLocaleString('ja-JP'),
+      operatorName,
+      storeName: storeName || (selectedStoreNo ? `NO.${selectedStoreNo} 店舗` : '無題店舗'),
+      storeId,
+      contactPerson: callbackStaffName || contactPerson || '店舗担当者様',
+      contactRole: chosenStatus === 'callback_waiting' ? 'スタッフ' : contactRole,
+      phoneNumber,
+      ledStatus: 'not_started',
+      locationCategory: computedCategory || 'unspecified',
+      surveyRequirement: 'pending',
+      afterHoursTriggered: false,
+      keyCustody: 'not_applicable',
+      notes: fullNotes,
+      status: 'follow_up_needed',
+      callStatus: statusLabel,
+      callbackScheduledAt: scheduledTimeStr,
+      callbackNotes: fullNotes,
+    };
+
+    onSaveRecord(newHearing);
+
+    // 3. Find next unphoned store
+    const currentIndex = stores.findIndex((s) => s.no === selectedStoreNo);
+    let nextUnphoned = stores.find((s, idx) => idx > currentIndex && (s.phoneStatus === '未架電' || !s.phoneStatus));
+    if (!nextUnphoned) {
+      nextUnphoned = stores.find((s) => (s.phoneStatus === '未架電' || !s.phoneStatus) && s.no !== selectedStoreNo);
+    }
+
+    setOutcomeSavedModal({
+      statusLabel,
+      storeName: storeName || (selectedStoreNo ? `NO.${selectedStoreNo}` : ''),
+      scheduledTime: scheduledTimeStr,
+      notes: remarkAddition,
+      nextStore: nextUnphoned || null,
+    });
   };
 
   // Step 5: Lock & Key Procedure (Conditional on after_hours)
@@ -385,12 +583,52 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           <p className="text-xs sm:text-sm text-slate-600 mt-1">
             店舗様との通話中に選択肢をクリックするだけで、次のトークスクリプトと調査要否・設置区分を即座に自動判定します。
           </p>
+          {selectedStoreNo && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+              <span className="text-slate-500 font-medium">架電先:</span>
+              <strong className="text-slate-900">NO.{selectedStoreNo} {storeName}</strong>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-500 font-medium">TEL:</span>
+              <span className="font-mono font-bold text-blue-700">{phoneNumber || '-'}</span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-500 font-medium">電話ステータス(M):</span>
+              <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '完了'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '電話するも出ず'
+                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '留守電'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '折返待ち'
+                  ? 'bg-purple-50 text-purple-800 border-purple-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '再連絡待ち'
+                  ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '担当不在'
+                  ? 'bg-orange-50 text-orange-800 border-orange-200'
+                  : stores.find((s) => s.no === selectedStoreNo)?.phoneStatus === '通話中'
+                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                  : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
+                {stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+          {onBackToLedger && (
+            <button
+              onClick={onBackToLedger}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer shadow-2xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>台帳一覧に戻る</span>
+            </button>
+          )}
+
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>リセット</span>
@@ -572,55 +810,605 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    架電オペレーター
+                    架電オペレーター <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={operatorName}
-                    onChange={(e) => setOperatorName(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                  />
+                  <div className="space-y-1.5">
+                    <select
+                      value={operatorSelect}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOperatorSelect(val);
+                        try {
+                          localStorage.setItem('led_operator_select', val);
+                        } catch {}
+                      }}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium text-slate-800"
+                    >
+                      <option value="">-- オペレーターを選択 --</option>
+                      <option value="比嘉">比嘉</option>
+                      <option value="栗木">栗木</option>
+                      <option value="吉原">吉原</option>
+                      <option value="その他">その他（自由入力）</option>
+                    </select>
+
+                    {operatorSelect === 'その他' && (
+                      <input
+                        type="text"
+                        placeholder="担当者氏名を入力してください"
+                        value={customOperator}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomOperator(val);
+                          try {
+                            localStorage.setItem('led_custom_operator', val);
+                          } catch {}
+                        }}
+                        className="w-full px-3 py-2 text-xs bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden shadow-2xs"
+                        autoFocus
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Script Bubble 1: First Contact / Opening */}
-              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
-                    発話スクリプト①（受付・担当者呼出）
-                  </span>
-                  <span className="text-xs text-blue-700 font-medium">委託元の明示</span>
-                </div>
-                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
-                  「お忙しいところ恐れ入ります。<br />
-                  私、［{operatorName || '自社名・氏名'}］と申します。<br /><br />
-                  貴社本部様より委託を受けまして、店舗様のLED照明に関するご連絡をさせていただきました。<br />
-                  店長様、もしくは設備のご担当者様はお手すきでしょうか？」
-                </p>
-              </div>
+              {/* 架電結果・ステータス選択（出ず、留守電、折返待ち、再連絡日時、担当不在、承諾） */}
+              <div className="bg-gradient-to-r from-blue-50/50 via-slate-50 to-indigo-50/50 border border-blue-200/80 rounded-xl p-4 sm:p-5 space-y-4 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shadow-xs">
+                      <PhoneCall className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                        <span>架電結果・電話ステータスを選択</span>
+                        <span className="text-[11px] font-normal text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          必須選択
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        電話した結果（出ず・留守電・折返・再連絡等）を選択すると、専用スクリプト表示や台帳（M列）への即時保存が行えます
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Script Bubble 2: Purpose & Time Consent */}
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-0.5 rounded">
-                    発話スクリプト②（趣旨説明・所要時間確認）
-                  </span>
-                  <span className="text-xs text-emerald-700 font-medium">所要時間: 2〜3分でお電話にて完了</span>
+                  {selectedStoreNo && (
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1 self-start sm:self-auto">
+                      <span>現在の台帳状態:</span>
+                      <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {stores.find((s) => s.no === selectedStoreNo)?.phoneStatus || '未架電'}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-emerald-100 shadow-xs">
-                  「LED照明切替に伴う事前調査について、現在の設置状況を確認させていただきたくお電話いたしました。2〜3分ほどでお電話にて完了いたしますが、今少しだけお時間よろしいでしょうか？」
-                </p>
-              </div>
 
-              {/* Next Button */}
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => setCurrentStep(2)}
-                  className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-xs"
-                >
-                  <span>承諾を得たため、LED化状況の確認へ進む</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                {/* Status Segmented Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                  {/* 1. Connected */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('connected')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'connected'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-emerald-300 text-slate-700 hover:bg-emerald-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'connected' ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-300'}`} />
+                      <PhoneCall className={`w-4 h-4 ${callOutcome === 'connected' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">通話接続・承諾</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">本人が出た・調査へ</div>
+                    </div>
+                  </button>
+
+                  {/* 2. No Answer */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('no_answer')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'no_answer'
+                        ? 'bg-rose-50 border-rose-500 text-rose-950 ring-2 ring-rose-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-rose-300 text-slate-700 hover:bg-rose-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'no_answer' ? 'bg-rose-500 ring-2 ring-rose-200' : 'bg-slate-300'}`} />
+                      <PhoneMissed className={`w-4 h-4 ${callOutcome === 'no_answer' ? 'text-rose-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">電話するも出ず</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">呼出音のみ・話中</div>
+                    </div>
+                  </button>
+
+                  {/* 3. Voicemail */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('voicemail')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'voicemail'
+                        ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-amber-300 text-slate-700 hover:bg-amber-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'voicemail' ? 'bg-amber-500 ring-2 ring-amber-200' : 'bg-slate-300'}`} />
+                      <Voicemail className={`w-4 h-4 ${callOutcome === 'voicemail' ? 'text-amber-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">留守電</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">メッセージ残し</div>
+                    </div>
+                  </button>
+
+                  {/* 4. Callback Waiting */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('callback_waiting')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'callback_waiting'
+                        ? 'bg-purple-50 border-purple-500 text-purple-950 ring-2 ring-purple-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-purple-300 text-slate-700 hover:bg-purple-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'callback_waiting' ? 'bg-purple-500 ring-2 ring-purple-200' : 'bg-slate-300'}`} />
+                      <PhoneForwarded className={`w-4 h-4 ${callOutcome === 'callback_waiting' ? 'text-purple-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">折返待ち</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">他スタッフへ伝言</div>
+                    </div>
+                  </button>
+
+                  {/* 5. Reschedule */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('reschedule')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'reschedule'
+                        ? 'bg-cyan-50 border-cyan-500 text-cyan-950 ring-2 ring-cyan-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-cyan-300 text-slate-700 hover:bg-cyan-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'reschedule' ? 'bg-cyan-500 ring-2 ring-cyan-200' : 'bg-slate-300'}`} />
+                      <CalendarClock className={`w-4 h-4 ${callOutcome === 'reschedule' ? 'text-cyan-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">再連絡日時指定</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">再架電日時を予約</div>
+                    </div>
+                  </button>
+
+                  {/* 6. Staff Away */}
+                  <button
+                    type="button"
+                    onClick={() => setCallOutcome('staff_away')}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                      callOutcome === 'staff_away'
+                        ? 'bg-orange-50 border-orange-500 text-orange-950 ring-2 ring-orange-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-orange-300 text-slate-700 hover:bg-orange-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${callOutcome === 'staff_away' ? 'bg-orange-500 ring-2 ring-orange-200' : 'bg-slate-300'}`} />
+                      <UserX className={`w-4 h-4 ${callOutcome === 'staff_away' ? 'text-orange-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm">担当不在</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">公休・外出等</div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Sub-Panel: Outcome Details & Actions */}
+                {callOutcome === 'connected' && (
+                  <div className="space-y-4 pt-1 animate-in fade-in">
+                    {/* Script Bubble 1: First Contact / Opening */}
+                    <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold bg-blue-600 text-white px-2 py-0.5 rounded">
+                          発話スクリプト①（受付・担当者呼出）
+                        </span>
+                        <span className="text-xs text-blue-700 font-medium">委託元の明示</span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-blue-100 shadow-xs">
+                        「お忙しいところ恐れ入ります。<br />
+                        私、［{operatorName || '自社名・氏名'}］と申します。<br /><br />
+                        貴社本部様より委託を受けまして、店舗様のLED照明に関するご連絡をさせていただきました。<br />
+                        店長様、もしくは設備のご担当者様はお手すきでしょうか？」
+                      </p>
+                    </div>
+
+                    {/* Script Bubble 2: Purpose & Time Consent */}
+                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold bg-emerald-600 text-white px-2 py-0.5 rounded">
+                          発話スクリプト②（趣旨説明・所要時間確認）
+                        </span>
+                        <span className="text-xs text-emerald-700 font-medium">所要時間: 2〜3分でお電話にて完了</span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal bg-white/70 p-3 rounded-lg border border-emerald-100 shadow-xs">
+                        「LED照明切替に伴う事前調査について、現在の設置状況を確認させていただきたくお電話いたしました。2〜3分ほどでお電話にて完了いたしますが、今少しだけお時間よろしいでしょうか？」
+                      </p>
+                    </div>
+
+                    {/* Next Button */}
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => {
+                          if (selectedStoreNo && onUpdateStoreField) {
+                            onUpdateStoreField(selectedStoreNo, 'phoneStatus', '通話中');
+                            onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
+                          }
+                          setCurrentStep(2);
+                        }}
+                        className="flex items-center gap-1.5 px-6 py-2.5 text-xs font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                      >
+                        <span>承諾を得たため、LED化状況の確認へ進む（STEP 2）</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {callOutcome === 'no_answer' && (
+                  <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-rose-900 font-bold text-sm">
+                      <PhoneMissed className="w-4 h-4 text-rose-600" />
+                      <span>電話するも出ず（呼出音のみ・不通）の記録</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          呼出状況の詳細
+                        </label>
+                        <select
+                          value={noAnswerDetail}
+                          onChange={(e) => setNoAnswerDetail(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-rose-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-rose-500 font-medium text-slate-800"
+                        >
+                          <option value="20秒以上呼出（応答なし）">20秒以上呼出（応答なし）</option>
+                          <option value="話中音（ビジートーン）">話中音（ビジートーン）</option>
+                          <option value="コール数回で切断">コール数回で切断</option>
+                          <option value="ガイダンスなし不通">ガイダンスなし不通</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          状況メモ（任意）
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="例: ピーク時間帯のため出られない様子。後ほど再コール"
+                          value={callbackCustomNotes}
+                          onChange={(e) => setCallbackCustomNotes(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveNonConnectedStatus('no_answer')}
+                        className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>「電話するも出ず」として台帳に記録・保存</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {callOutcome === 'voicemail' && (
+                  <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+                      <Voicemail className="w-4 h-4 text-amber-600" />
+                      <span>留守番電話接続・メッセージ吹き込みスクリプト</span>
+                    </div>
+
+                    {/* Voicemail Talk Script */}
+                    <div className="bg-white/80 border border-amber-200 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-amber-800">
+                        <span>留守電吹き込み用トークスクリプト（このまま読み上げてください）</span>
+                        <span className="text-amber-600 font-mono">約25秒</span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal">
+                        「お忙しいところ恐れ入ります。<br />
+                        私、本部様より委託を受けておりますLED照明事前調査担当の［<strong className="text-blue-700">{operatorName || '自社名・氏名'}</strong>］と申します。<br />
+                        店舗様の蛍光灯からLED照明への切替に伴う設置確認の件でお電話いたしました。<br />
+                        また改めてお電話させていただきますので、どうぞよろしくお願いいたします。失礼いたします。」
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer bg-white px-3 py-2 rounded-lg border border-amber-200">
+                        <input
+                          type="checkbox"
+                          checked={voicemailRecorded}
+                          onChange={(e) => setVoicemailRecorded(e.target.checked)}
+                          className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500"
+                        />
+                        <span>上記メッセージを留守電に録音完了</span>
+                      </label>
+
+                      <input
+                        type="text"
+                        placeholder="追記メモ（例: 営業時間外のアナウンスあり）"
+                        value={voicemailNote}
+                        onChange={(e) => setVoicemailNote(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveNonConnectedStatus('voicemail')}
+                        className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>「留守電」として台帳に記録・保存</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {callOutcome === 'callback_waiting' && (
+                  <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-purple-900 font-bold text-sm">
+                      <PhoneForwarded className="w-4 h-4 text-purple-600" />
+                      <span>折返待ち（スタッフ伝言預け・店舗からの折返し待ち）</span>
+                    </div>
+
+                    {/* Staff Callback Script */}
+                    <div className="bg-white/80 border border-purple-200 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+                      <div className="text-[11px] font-bold text-purple-800">
+                        店舗スタッフ様への伝言スクリプト
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-normal">
+                        「恐れ入ります。本部様より委託を受けておりますLED照明事前調査の件でお電話いたしました。<br />
+                        店長様がお戻りになられましたら、本部様よりLED照明調査の件で連絡があった旨をお伝えいただけますでしょうか。<br />
+                        私どもからも後ほど改めてご連絡いたします。ご対応ありがとうございました。」
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          電話に出られた方（受付者名・役職）
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="例: スタッフ様（ホール担当）、副店長様"
+                          value={callbackStaffName}
+                          onChange={(e) => setCallbackStaffName(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          戻り目安・折返し希望時間
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="例: 店長は16時頃戻り予定、夕方折返し希望"
+                          value={callbackExpectedTime}
+                          onChange={(e) => setCallbackExpectedTime(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveNonConnectedStatus('callback_waiting')}
+                        className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>「折返待ち」として台帳に記録・保存</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {callOutcome === 'reschedule' && (
+                  <div className="bg-cyan-50/70 border border-cyan-200 rounded-xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-cyan-900 font-bold text-sm">
+                      <CalendarClock className="w-4 h-4 text-cyan-600" />
+                      <span>再連絡日時を指定（再架電の予約日時を台帳に登録）</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Recontact Date */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-cyan-600" />
+                            <span>再連絡予定日 <span className="text-rose-500">*</span></span>
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDatePreset('today')}
+                              className="px-2 py-0.5 text-[11px] bg-white border border-cyan-300 hover:bg-cyan-100 rounded text-cyan-800 transition-colors cursor-pointer"
+                            >
+                              本日中
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDatePreset('tomorrow')}
+                              className="px-2 py-0.5 text-[11px] bg-white border border-cyan-300 hover:bg-cyan-100 rounded text-cyan-800 transition-colors cursor-pointer"
+                            >
+                              明日
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDatePreset('day_after')}
+                              className="px-2 py-0.5 text-[11px] bg-white border border-cyan-300 hover:bg-cyan-100 rounded text-cyan-800 transition-colors cursor-pointer"
+                            >
+                              明後日
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDatePreset('next_mon')}
+                              className="px-2 py-0.5 text-[11px] bg-white border border-cyan-300 hover:bg-cyan-100 rounded text-cyan-800 transition-colors cursor-pointer"
+                            >
+                              来週月曜
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={callbackDate}
+                            onChange={(e) => setCallbackDate(e.target.value)}
+                            className="px-3 py-2 text-xs bg-white border border-cyan-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-bold text-slate-800"
+                          />
+                          <span className="text-xs font-bold text-cyan-800 bg-white px-3 py-2 rounded-lg border border-cyan-200">
+                            {formatDateJp(callbackDate)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Recontact Time Slot */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                          再連絡希望時間帯 <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                          {[
+                            '10:00〜12:00（午前・開店前）',
+                            '14:00〜16:00（アイドルタイム）',
+                            '16:00〜18:00（夕方前）',
+                            '20:00以降（夜間・閉店後）',
+                          ].map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => {
+                                setCallbackTimeSlot(slot);
+                                setCallbackExactTime('');
+                              }}
+                              className={`px-2.5 py-2 text-xs rounded-lg border text-center transition-all cursor-pointer ${
+                                callbackTimeSlot === slot && !callbackExactTime
+                                  ? 'bg-cyan-600 text-white font-bold border-cyan-600 shadow-xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50'
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">または時刻をピンポイント指定:</span>
+                          <input
+                            type="time"
+                            value={callbackExactTime}
+                            onChange={(e) => setCallbackExactTime(e.target.value)}
+                            placeholder="例: 15:30"
+                            className="px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono font-bold"
+                          />
+                          {callbackExactTime && (
+                            <button
+                              type="button"
+                              onClick={() => setCallbackExactTime('')}
+                              className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              クリア
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Callback Notes */}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          再連絡時の注意事項・担当者要望メモ
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="例: 店長様宛。ランチタイム営業後は14時半以降なら電話対応可能とのこと"
+                          value={callbackCustomNotes}
+                          onChange={(e) => setCallbackCustomNotes(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-cyan-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveNonConnectedStatus('reschedule')}
+                        className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>「再連絡日時（再架電待ち）」を台帳に登録・保存</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {callOutcome === 'staff_away' && (
+                  <div className="bg-orange-50/70 border border-orange-200 rounded-xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-orange-900 font-bold text-sm">
+                      <UserX className="w-4 h-4 text-orange-600" />
+                      <span>担当不在（店長・設備責任者の公休・外出等）</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          不在理由
+                        </label>
+                        <select
+                          value={staffAwayReason}
+                          onChange={(e) => setStaffAwayReason(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-orange-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-orange-500 font-medium text-slate-800"
+                        >
+                          <option value="本日公休・シフト不在">本日公休・シフト不在</option>
+                          <option value="外出中・他店応援">外出中・他店応援</option>
+                          <option value="会議・研修中">会議・研修中</option>
+                          <option value="接客ピーク・取次不可">接客ピーク・取次不可</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          出勤予定・特記事項（任意）
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="例: 明日の昼シフトで出勤予定とのこと"
+                          value={callbackCustomNotes}
+                          onChange={(e) => setCallbackCustomNotes(e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveNonConnectedStatus('staff_away')}
+                        className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>「担当不在」として台帳に記録・保存</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1599,6 +2387,91 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Outcome Saved Modal / Notification Overlay */}
+      {outcomeSavedModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3.5">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+
+            <div className="text-center space-y-1.5 mb-5">
+              <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full inline-block border border-emerald-200">
+                Cloud Firestore リアルタイム同期完了
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                電話ステータスを台帳に保存しました
+              </h3>
+              <p className="text-xs text-slate-600">
+                対象：<strong className="text-slate-900">{outcomeSavedModal.storeName}</strong>
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs mb-5">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">電話ステータス（M列）：</span>
+                <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  {outcomeSavedModal.statusLabel}
+                </span>
+              </div>
+              {outcomeSavedModal.scheduledTime && (
+                <div className="flex justify-between items-center text-cyan-800">
+                  <span className="font-medium">📅 再連絡予定日時：</span>
+                  <span className="font-bold font-mono bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                    {outcomeSavedModal.scheduledTime}
+                  </span>
+                </div>
+              )}
+              {outcomeSavedModal.notes && (
+                <div className="text-slate-600 pt-1.5 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-400">備考欄(J列)反映:</span> {outcomeSavedModal.notes}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {outcomeSavedModal.nextStore && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (outcomeSavedModal.nextStore) {
+                      handleSelectStore(outcomeSavedModal.nextStore);
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>続けて次の未架電店舗へ進む (NO.{outcomeSavedModal.nextStore.no} {outcomeSavedModal.nextStore.storeName})</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOutcomeSavedModal(null);
+                    if (onBackToLedger) onBackToLedger();
+                  }}
+                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                >
+                  台帳一覧に戻る
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOutcomeSavedModal(null);
+                  }}
+                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                >
+                  画面に留まる
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

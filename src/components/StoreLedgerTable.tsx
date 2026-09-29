@@ -97,7 +97,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       if (filterHasDrawing === '○' && r.hasDrawing !== '○') return false;
       if (filterHasDrawing === 'none' && r.hasDrawing === '○') return false;
     }
-    if (filterPhoneStatus !== 'all' && r.phoneStatus !== filterPhoneStatus) return false;
+    if (filterPhoneStatus !== 'all') {
+      if (filterPhoneStatus === 'recontact') {
+        const isRecontact = ['電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(r.phoneStatus);
+        if (!isRecontact) return false;
+      } else if (r.phoneStatus !== filterPhoneStatus) {
+        return false;
+      }
+    }
     if (filterCompletion !== 'all' && r.completion !== filterCompletion) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -315,6 +322,9 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
   const totalStores = records.length;
   const completedCount = records.filter((r) => r.completion === '完了').length;
   const phonedCount = records.filter((r) => r.phoneStatus === '完了').length;
+  const recontactCount = records.filter((r) =>
+    ['電話するも出ず', '留守電', '折返待ち', '再連絡待ち', '担当不在', '不在/再架電'].includes(r.phoneStatus)
+  ).length;
   const drawingCount = records.filter((r) => r.hasDrawing === '○').length;
 
   return (
@@ -355,6 +365,13 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               <span className="text-slate-300">|</span>
               <span className="text-slate-500">架電完了(M):</span>
               <span className="font-bold text-blue-600">{phonedCount}件</span>
+              {recontactCount > 0 && (
+                <>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-amber-600 font-medium">要再架電/折返:</span>
+                  <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{recontactCount}件</span>
+                </>
+              )}
               <span className="text-slate-300">|</span>
               <span className="text-slate-500">全工程完了(U):</span>
               <span className="font-bold text-emerald-600">{completedCount}件</span>
@@ -442,10 +459,17 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
             >
               <option value="all">すべて</option>
+              <option value="recontact">★ 要再架電・折返待ち全体</option>
               <option value="未架電">未架電</option>
+              <option value="電話するも出ず">電話するも出ず</option>
+              <option value="留守電">留守電</option>
+              <option value="折返待ち">折返待ち</option>
+              <option value="再連絡待ち">再連絡待ち</option>
+              <option value="担当不在">担当不在</option>
+              <option value="通話中">通話中</option>
               <option value="完了">完了</option>
               <option value="不在/再架電">不在/再架電</option>
-              <option value="通話中">通話中</option>
+              <option value="着信拒否">着信拒否</option>
             </select>
           </div>
 
@@ -1005,19 +1029,33 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                             isDone
                               ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
                               : r.phoneStatus === '完了'
-                              ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 font-bold'
+                              : r.phoneStatus === '電話するも出ず'
+                              ? 'text-rose-700 bg-rose-50 border-rose-200 font-bold'
+                              : r.phoneStatus === '留守電'
+                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                              : r.phoneStatus === '折返待ち'
+                              ? 'text-purple-700 bg-purple-50 border-purple-200 font-bold'
+                              : r.phoneStatus === '再連絡待ち'
+                              ? 'text-cyan-700 bg-cyan-50 border-cyan-200 font-bold'
+                              : r.phoneStatus === '担当不在'
+                              ? 'text-orange-700 bg-orange-50 border-orange-200 font-bold'
                               : r.phoneStatus === '通話中'
-                              ? 'text-blue-700 bg-blue-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              ? 'text-blue-700 bg-blue-50 border-blue-200 font-bold'
                               : r.phoneStatus === '不在/再架電'
-                              ? 'text-amber-700 bg-amber-50 border-transparent hover:border-slate-300 focus:border-blue-500'
+                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
                               : 'text-slate-500 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未架電">未架電</option>
+                          <option value="電話するも出ず">電話するも出ず</option>
+                          <option value="留守電">留守電</option>
+                          <option value="折返待ち">折返待ち</option>
+                          <option value="再連絡待ち">再連絡待ち</option>
+                          <option value="担当不在">担当不在</option>
+                          <option value="通話中">通話中</option>
                           <option value="完了">完了</option>
                           <option value="不在/再架電">不在/再架電</option>
-                          <option value="通話中">通話中</option>
-                          <option value="担当不在">担当不在</option>
                           <option value="着信拒否">着信拒否</option>
                         </select>
                       </td>
@@ -1258,10 +1296,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
                   >
                     <option value="未架電">未架電</option>
+                    <option value="電話するも出ず">電話するも出ず</option>
+                    <option value="留守電">留守電</option>
+                    <option value="折返待ち">折返待ち</option>
+                    <option value="再連絡待ち">再連絡待ち</option>
+                    <option value="担当不在">担当不在</option>
+                    <option value="通話中">通話中</option>
                     <option value="完了">完了</option>
                     <option value="不在/再架電">不在/再架電</option>
-                    <option value="通話中">通話中</option>
-                    <option value="担当不在">担当不在</option>
                     <option value="着信拒否">着信拒否</option>
                   </select>
                 </div>

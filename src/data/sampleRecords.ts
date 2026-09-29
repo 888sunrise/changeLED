@@ -9,7 +9,7 @@ export const INITIAL_SAMPLE_RECORDS: HearingRecord[] = [
   {
     id: 'rec-001',
     timestamp: '2026-09-25 10:15',
-    operatorName: '山田 太郎',
+    operatorName: '比嘉',
     storeName: '和食処 桜坂 渋谷道玄坂店',
     storeId: 'SHIBUYA-042',
     contactPerson: '佐藤 健一',
@@ -60,7 +60,7 @@ export const INITIAL_SAMPLE_RECORDS: HearingRecord[] = [
   {
     id: 'rec-003',
     timestamp: '2026-09-26 11:20',
-    operatorName: '山田 太郎',
+    operatorName: '栗木',
     storeName: 'ファミリーステーキハウス 国道16号相模原店',
     storeId: 'SAGAMI-009',
     contactPerson: '高橋 雄二',
