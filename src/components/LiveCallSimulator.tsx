@@ -94,11 +94,11 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     nextStore?: StoreRecord | null;
   } | null>(null);
 
-  // Form State - Operator Selection ('比嘉', '栗木', '吉原', 'その他')
+  // Form State - Operator Selection ('比嘉', '栗木', '飯野', '吉原', 'その他')
   const [operatorSelect, setOperatorSelect] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('led_operator_select');
-      if (saved && ['比嘉', '栗木', '吉原', 'その他'].includes(saved)) {
+      if (saved && ['比嘉', '栗木', '飯野', '吉原', 'その他'].includes(saved)) {
         return saved;
       }
     } catch {}
@@ -253,7 +253,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
   const handleSaveNonConnectedStatus = (chosenStatus: CallStatusOption) => {
     if (!operatorName) {
-      alert('架電オペレーターを選択してください（比嘉、栗木、吉原、その他）');
+      alert('架電オペレーターを選択してください（比嘉、栗木、飯野、吉原、その他）');
       return;
     }
 
@@ -827,6 +827,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                       <option value="">-- オペレーターを選択 --</option>
                       <option value="比嘉">比嘉</option>
                       <option value="栗木">栗木</option>
+                      <option value="飯野">飯野</option>
                       <option value="吉原">吉原</option>
                       <option value="その他">その他（自由入力）</option>
                     </select>
