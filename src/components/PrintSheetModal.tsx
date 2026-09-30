@@ -21,12 +21,42 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl border border-slate-200">
-        {/* Modal Controls (Hidden when printed) */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between print:hidden">
+    <div className="fixed inset-0 z-[99999] bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden modal-overlay-print">
+      <style>{`
+        @media print {
+          .modal-overlay-print {
+            position: static !important;
+            background: none !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          .modal-card-print {
+            max-height: none !important;
+            overflow: visible !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          .modal-scroll-print {
+            overflow: visible !important;
+            max-height: none !important;
+            padding: 0 !important;
+          }
+        }
+      `}</style>
+
+      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-300 overflow-hidden modal-card-print animate-in fade-in zoom-in-95 duration-150">
+        {/* Modal Controls Top Bar (Sticky, Always visible, never cut off) */}
+        <div className="sticky top-0 z-30 shrink-0 px-4 sm:px-6 py-3 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shadow-xs print:hidden">
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm text-slate-900">印刷プレビュー・帳票出力</span>
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+              【{record.storeName}】
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {onEditRecord && (
@@ -36,7 +66,7 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
                   onClose();
                   onEditRecord(record);
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
                 title="通話ナビに戻って修正・上書き保存"
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -44,23 +74,27 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
               </button>
             )}
             <button
+              type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs cursor-pointer"
+              title="帳票を印刷またはPDFとして保存"
             >
               <Printer className="w-4 h-4" />
               <span>印刷する / PDF保存</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200 transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+              title="閉じる"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Printable Sheet Content */}
-        <div className="p-8 space-y-6 text-slate-900 bg-white" id="printable-area">
+        {/* Printable Sheet Content (Internal Scrollable) */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 text-slate-900 bg-white modal-scroll-print" id="printable-area">
           {/* Header */}
           <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between">
             <div>
@@ -73,7 +107,14 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
             </div>
             <div className="text-right text-xs font-mono">
               <div>記録ID: {record.id}</div>
-              <div>受付日時: {record.timestamp}</div>
+              <div>
+                <span>受付日時: {record.timestamp.split(' (')[0]}</span>
+                {record.timestamp.includes('(') && (
+                  <span className="block text-[11px] text-slate-500 font-sans">
+                    {record.timestamp.match(/\((.*?)\)/)?.[1] || ''}
+                  </span>
+                )}
+              </div>
               <div>担当者: {record.operatorName}</div>
             </div>
           </div>
@@ -284,6 +325,30 @@ export const PrintSheetModal: React.FC<PrintSheetModalProps> = ({ record, onClos
               <div className="text-slate-500 mb-6">本部管理簿記入</div>
               <div className="text-slate-300">完了印</div>
             </div>
+          </div>
+        </div>
+
+        {/* Modal Controls Bottom Bar (Sticky at bottom, hidden on print) */}
+        <div className="sticky bottom-0 z-30 shrink-0 px-4 sm:px-6 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shadow-xs print:hidden">
+          <div className="text-xs text-slate-500 font-medium">
+            <span>A4縦印刷・PDF保存に最適化されています</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>印刷する / PDF保存</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            >
+              閉じる
+            </button>
           </div>
         </div>
       </div>

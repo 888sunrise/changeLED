@@ -39,24 +39,65 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   onStartNewHearing,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'not_required'>('all');
+  const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'not_required' | 'recontact'>('all');
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<HearingRecord | null>(null);
   const [recordToDelete, setRecordToDelete] = useState<HearingRecord | null>(null);
 
+  // Recontact record condition
+  const isRecontactRecord = (r: HearingRecord) => {
+    return Boolean(
+      r.callbackScheduledAt ||
+      r.status === 'follow_up_needed' ||
+      r.callStatus === '再連絡待ち' ||
+      r.callStatus === '折返待ち' ||
+      r.callStatus === '出ず' ||
+      r.callStatus === '電話するも出ず' ||
+      r.callStatus === '留守電' ||
+      r.callStatus === '担当不在' ||
+      r.surveyRequirement === 'pending'
+    );
+  };
+
   // Filtered list
   const filteredRecords = records.filter((r) => {
-    if (filterRequirement !== 'all' && r.surveyRequirement !== filterRequirement) {
-      return false;
+    if (filterRequirement === 'required') {
+      if (r.surveyRequirement !== 'required') return false;
+    } else if (filterRequirement === 'not_required') {
+      if (r.surveyRequirement !== 'not_required') return false;
+    } else if (filterRequirement === 'recontact') {
+      if (!isRecontactRecord(r)) return false;
     }
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
       r.storeName.toLowerCase().includes(q) ||
       (r.storeId && r.storeId.toLowerCase().includes(q)) ||
       r.contactPerson.toLowerCase().includes(q) ||
-      (r.notes && r.notes.toLowerCase().includes(q))
+      (r.notes && r.notes.toLowerCase().includes(q)) ||
+      (r.callStatus && r.callStatus.toLowerCase().includes(q)) ||
+      (r.callbackScheduledAt && r.callbackScheduledAt.toLowerCase().includes(q))
     );
   });
+
+  // Render timestamp in two lines if modified/updated
+  const renderTimestamp = (ts: string) => {
+    const match = ts.match(/^(.*?)\s*\((修正|更新):\s*(.*?)\)$/);
+    if (match) {
+      const orig = match[1].trim();
+      const type = match[2];
+      const updated = match[3].trim();
+      return (
+        <div className="space-y-0.5 leading-tight">
+          <div className="font-mono text-slate-800 font-medium whitespace-nowrap">{orig}</div>
+          <div className="text-[11px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 inline-block font-semibold whitespace-nowrap">
+            {type}: {updated}
+          </div>
+        </div>
+      );
+    }
+    return <div className="font-mono text-slate-600 whitespace-nowrap">{ts}</div>;
+  };
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -189,10 +230,10 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       {/* Filter and Search Bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Status Segmented Buttons */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
           <button
             onClick={() => setFilterRequirement('all')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               filterRequirement === 'all'
                 ? 'bg-white text-slate-900 shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -202,7 +243,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
           </button>
           <button
             onClick={() => setFilterRequirement('required')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               filterRequirement === 'required'
                 ? 'bg-blue-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -211,8 +252,18 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             要訪問調査 ({records.filter((r) => r.surveyRequirement === 'required').length})
           </button>
           <button
+            onClick={() => setFilterRequirement('recontact')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+              filterRequirement === 'recontact'
+                ? 'bg-amber-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            再連絡 ({records.filter(isRecontactRecord).length})
+          </button>
+          <button
             onClick={() => setFilterRequirement('not_required')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               filterRequirement === 'not_required'
                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -263,8 +314,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                   const isDone = r.surveyRequirement === 'not_required';
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
-                        {r.timestamp}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {renderTimestamp(r.timestamp)}
                       </td>
 
                       <td className="py-3 px-4">
