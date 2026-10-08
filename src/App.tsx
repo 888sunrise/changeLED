@@ -446,9 +446,6 @@ export default function App() {
               </span>
             )}
           </div>
-          <div className="text-[11px] text-slate-500 font-mono hidden md:inline shrink-0 whitespace-nowrap">
-            Project: true-pattern-x98sv / Collections: stores_led_records, hearing_records
-          </div>
         </div>
       </div>
 
