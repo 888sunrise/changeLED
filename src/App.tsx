@@ -33,7 +33,7 @@ const STORAGE_KEY = 'led_hearing_records_v1';
 const STORE_STORAGE_KEY = 'led_stores_records_v2';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'ledger' | 'simulator' | 'post_visit' | 'flowchart' | 'scripts' | 'checksheet'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'simulator' | 'post_visit' | 'flowchart' | 'scripts' | 'checksheet'>('checksheet');
 
   // Stores (A〜U columns) - Cloud Firestore is master
   const [stores, setStores] = useState<StoreRecord[]>(() => {

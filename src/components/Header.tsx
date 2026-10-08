@@ -67,6 +67,18 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Tier 2 (下段ナビゲーション): Navigation Tabs with full horizontal width */}
         <nav className="flex items-center gap-1 sm:gap-2 h-11 overflow-x-auto scrollbar-none py-1">
           <button
+            onClick={() => setActiveTab('checksheet')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'checksheet'
+                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ClipboardCheck className="w-4 h-4 text-blue-600" />
+            <span>記録カルテ</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('ledger')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'ledger'
@@ -129,18 +141,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <BookOpen className="w-4 h-4 text-slate-500" />
             <span>トークスクリプト全文</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('checksheet')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeTab === 'checksheet'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <ClipboardCheck className="w-4 h-4 text-slate-500" />
-            <span>記録カルテ</span>
           </button>
         </nav>
       </div>
