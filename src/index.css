@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@media print {
+  /* When the print sheet modal is open, completely hide #root so the background CRM/Checksheet page NEVER prints */
+  body.print-sheet-modal-open #root {
+    display: none !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 5mm 7mm;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Portal print container */
+  .print-sheet-portal-overlay {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .print-sheet-portal-card {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .print-sheet-desk-wrapper {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Reset printable area so it is NOT flex-1, NOT overflow-y-auto, full block */
+  #printable-area,
+  .print-sheet-content {
+    position: static !important;
+    display: block !important;
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    font-size: 8pt !important;
+    line-height: 1.25 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-sheet-content table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-sheet-content th,
+  .print-sheet-content td {
+    padding: 2pt 4pt !important;
+    font-size: 8pt !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+

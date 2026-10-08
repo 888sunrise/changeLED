@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "HearingRecord": {
+      "title": "HearingRecord",
+      "description": "事前調査電話ヒアリングの記録",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "operatorName": { "type": "string" },
+        "storeName": { "type": "string" },
+        "storeId": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactRole": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "ledStatus": { "type": "string", "enum": ["all_led", "partial_led", "not_started"] },
+        "partialAreas": { "type": "string" },
+        "locationCategory": { "type": "string", "enum": ["builtin", "foodcourt", "freesta", "unspecified"] },
+        "locationDetails": {
+          "type": "object",
+          "properties": {
+            "isTenantInBuilding": { "type": "boolean" },
+            "isCounterOnly": { "type": "boolean" },
+            "hasDedicatedParkingLights": { "type": "boolean" }
+          }
+        },
+        "surveyRequirement": { "type": "string", "enum": ["not_required", "required", "pending"] },
+        "preferredDate1": { "type": "string" },
+        "preferredTimeSlot1": { "type": "string" },
+        "preferredDate2": { "type": "string" },
+        "preferredTimeSlot2": { "type": "string" },
+        "workTiming": { "type": "string" },
+        "afterHoursTriggered": { "type": "boolean" },
+        "keyCustody": { "type": "string" },
+        "lockProcedure": { "type": "string" },
+        "emergencyContact": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "storeName", "ledStatus", "surveyRequirement", "operatorName"]
+    },
+    "StoreRecord": {
+      "title": "StoreRecord",
+      "description": "全173店舗のA〜U列進捗管理台帳データ",
+      "type": "object",
+      "properties": {
+        "no": { "type": "number" },
+        "storeCode": { "type": "string" },
+        "representativePhone": { "type": "string" },
+        "storeName": { "type": "string" },
+        "address1": { "type": "string" },
+        "address2": { "type": "string" },
+        "buildingName": { "type": "string" },
+        "storeMobile": { "type": "string" },
+        "managementType": { "type": "string" },
+        "remarks1": { "type": "string" },
+        "category": { "type": "string" },
+        "hasDrawing": { "type": "string" },
+        "phoneStatus": { "type": "string" },
+        "surveyAssignee": { "type": "string" },
+        "surveyDate": { "type": "string" },
+        "surveyDocCollection": { "type": "string" },
+        "replacementRequest": { "type": "string" },
+        "itemOrdering": { "type": "string" },
+        "workAssignee": { "type": "string" },
+        "scheduleNotice": { "type": "string" },
+        "completion": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["no", "storeCode", "storeName"]
+    }
+  },
+  "firestore": {
+    "/hearing_records/{recordId}": {
+      "entity": "HearingRecord",
+      "description": "店舗ごとのヒアリング記録一覧"
+    },
+    "/stores_led_records/{storeId}": {
+      "entity": "StoreRecord",
+      "description": "全店舗管理台帳レコード（A〜U列）"
+    }
+  }
+}
