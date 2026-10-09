@@ -110,13 +110,148 @@ export default function App() {
     };
   }, []);
 
+  // 連動同期: P列調査結果が「対象外」の店舗は、記録カルテのLED化状況を「全灯LED済」、訪問調査要否を「not_required (案件終了・調査不要)」に自動同期
+  useEffect(() => {
+    if (stores.length === 0 || records.length === 0) return;
+    const outOfScopeStores = stores.filter((s) => s.surveyDocCollection === '対象外');
+    if (outOfScopeStores.length === 0) return;
+
+    let hasChanges = false;
+    const updatedRecords = records.map((r) => {
+      const matchStore = outOfScopeStores.find(
+        (s) =>
+          (s.storeCode && r.storeId && s.storeCode.trim().toLowerCase() === r.storeId.trim().toLowerCase()) ||
+          (s.storeName && r.storeName && s.storeName.trim() === r.storeName.trim())
+      );
+      if (matchStore && (r.ledStatus !== 'all_led' || r.surveyRequirement !== 'not_required')) {
+        hasChanges = true;
+        return {
+          ...r,
+          ledStatus: 'all_led' as const,
+          surveyRequirement: 'not_required' as const,
+          status: 'completed' as const,
+          callStatus: '完了',
+          autoCompletedByDocScope: true,
+        };
+      }
+      return r;
+    });
+
+    if (hasChanges) {
+      setRecords(updatedRecords);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecords));
+      } catch {}
+    }
+  }, [stores, records]);
+
   // Update a single Store record (J〜T column update)
   const handleUpdateStore = async (updated: StoreRecord) => {
-    setStores((prev) => prev.map((s) => (s.no === updated.no ? updated : s)));
-    setCurrentCallingStore((prev) => (prev && prev.no === updated.no ? updated : prev));
+    // 連動: P: 調査資料回収・結果が「対象外」の場合は作業が発生しないためU: 完了を「完了」にする
+    const isOutOfScope = updated.surveyDocCollection === '対象外';
+    const normalized: StoreRecord =
+      isOutOfScope
+        ? { ...updated, completion: '完了' }
+        : updated;
+
+    setStores((prev) => prev.map((s) => (s.no === normalized.no ? normalized : s)));
+    setCurrentCallingStore((prev) => (prev && prev.no === normalized.no ? normalized : prev));
+
+    // 連動: 通話ナビ2などでP調査結果が「対象外」=完了となった分は
+    // 記録カルテのLED化状況を「全灯LED済」に変更、訪問調査要否を「not_required (案件終了・調査不要)」に自動更新
+    const storeCodeLower = normalized.storeCode?.trim().toLowerCase();
+    const storeNameTrimmed = normalized.storeName?.trim();
+
+    setRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => {
+        if (storeCodeLower && r.storeId && r.storeId.trim().toLowerCase() === storeCodeLower) return true;
+        if (storeNameTrimmed && r.storeName && r.storeName.trim() === storeNameTrimmed) return true;
+        return false;
+      });
+
+      let nextList: HearingRecord[] = [...prev];
+      let recordToPersist: HearingRecord | null = null;
+
+      if (isOutOfScope) {
+        if (existingIdx >= 0) {
+          const existing = prev[existingIdx];
+          recordToPersist = {
+            ...existing,
+            ledStatus: 'all_led',
+            surveyRequirement: 'not_required',
+            status: 'completed',
+            callStatus: '完了',
+            autoCompletedByDocScope: true,
+            notes: existing.notes
+              ? existing.notes.includes('全灯LED済')
+                ? existing.notes
+                : `${existing.notes}（P列結果: 対象外・全灯LED済）`
+              : 'P列調査結果「対象外」により全灯LED済・案件終了に自動更新',
+          };
+          nextList[existingIdx] = recordToPersist;
+        } else {
+          recordToPersist = {
+            id: `hearing-${normalized.storeCode || normalized.no}-${Date.now()}`,
+            timestamp: new Date().toLocaleString('ja-JP', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            operatorName: normalized.surveyAssignee || '自動連動',
+            storeName: normalized.storeName,
+            storeId: normalized.storeCode,
+            contactPerson: normalized.phoneContact || 'ご担当者様',
+            phoneNumber: normalized.representativePhone || normalized.storeMobile || '',
+            ledStatus: 'all_led',
+            surveyRequirement: 'not_required',
+            locationCategory:
+              normalized.category === 'ビルイン'
+                ? 'builtin'
+                : normalized.category === 'フードコート'
+                ? 'foodcourt'
+                : normalized.category === 'ロードサイド'
+                ? 'freesta'
+                : 'unspecified',
+            status: 'completed',
+            callStatus: '完了',
+            autoCompletedByDocScope: true,
+            notes: 'P列調査結果「対象外」により全灯LED済・案件終了に自動更新',
+            afterHoursTriggered: false,
+            keyCustody: 'not_applicable',
+          };
+          nextList = [recordToPersist, ...nextList];
+        }
+      } else if (existingIdx >= 0 && prev[existingIdx].autoCompletedByDocScope) {
+        // もし以前にP列「対象外」で自動連動完了された店舗が「未回収」等に戻された場合、復元
+        const existing = prev[existingIdx];
+        recordToPersist = {
+          ...existing,
+          ledStatus: 'partial_led',
+          surveyRequirement: 'required',
+          status: 'follow_up_needed',
+          callStatus: '再連絡待ち',
+          autoCompletedByDocScope: false,
+        };
+        nextList[existingIdx] = recordToPersist;
+      }
+
+      if (recordToPersist) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextList));
+        } catch {}
+        saveHearingRecordToFirestore(recordToPersist).catch((err) => {
+          console.error('Failed to auto-save hearing record from P column sync:', err);
+        });
+      }
+
+      return nextList;
+    });
+
     try {
       setSyncStatus('syncing');
-      await updateStoreRecordInFirestore(updated);
+      await updateStoreRecordInFirestore(normalized);
       setSyncStatus('connected');
     } catch (err) {
       console.error('Failed to update store in Firestore:', err);
@@ -127,11 +262,14 @@ export default function App() {
   // Bulk update store records (CSV Diff Import) - persists directly to Firestore
   const handleBulkUpdateStores = async (updatedList: StoreRecord[]) => {
     if (!updatedList || updatedList.length === 0) return;
-    const updateMap = new Map(updatedList.map((s) => [s.no, s]));
+    const normalizedList = updatedList.map((s) =>
+      s.surveyDocCollection === '対象外' ? { ...s, completion: '完了' } : s
+    );
+    const updateMap = new Map(normalizedList.map((s) => [s.no, s]));
     setStores((prev) => {
       const existingNos = new Set(prev.map((s) => s.no));
       const updatedExisting = prev.map((s) => updateMap.get(s.no) || s);
-      const newItems = updatedList.filter((s) => !existingNos.has(s.no));
+      const newItems = normalizedList.filter((s) => !existingNos.has(s.no));
       const combined = [...updatedExisting, ...newItems].sort((a, b) => a.no - b.no);
       try {
         localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify(combined));
@@ -141,7 +279,7 @@ export default function App() {
 
     try {
       setSyncStatus('syncing');
-      await bulkUpdateStoreRecords(updatedList);
+      await bulkUpdateStoreRecords(normalizedList);
       setSyncStatus('connected');
     } catch (err) {
       console.error('Failed to bulk update stores in Firestore:', err);
@@ -164,6 +302,7 @@ export default function App() {
         const updated = { ...prev, [field]: value };
         if (field === 'callStatus') updated.phoneStatus = value;
         else if (field === 'phoneStatus') updated.callStatus = value;
+        if (field === 'surveyDocCollection' && value === '対象外') updated.completion = '完了';
         return updated;
       }
       return prev;
@@ -176,6 +315,9 @@ export default function App() {
       updated.phoneStatus = value;
     } else if (field === 'phoneStatus') {
       updated.callStatus = value;
+    }
+    if (field === 'surveyDocCollection' && value === '対象外') {
+      updated.completion = '完了';
     }
     handleUpdateStore(updated);
   };

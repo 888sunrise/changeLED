@@ -576,10 +576,17 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         {r.ledStatus === 'all_led' ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>全灯LED済</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>全灯LED済</span>
+                            </span>
+                            {(r.autoCompletedByDocScope || (r.notes && r.notes.includes('P列'))) && (
+                              <span className="text-[10px] text-emerald-600 block font-normal">
+                                (P列:対象外連動)
+                              </span>
+                            )}
+                          </div>
                         ) : r.ledStatus === 'partial_led' ? (
                           <span className="inline-flex items-center gap-1 font-semibold text-blue-700">
                             <AlertTriangle className="w-3.5 h-3.5" />
@@ -616,10 +623,17 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         {r.surveyRequirement === 'not_required' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>調査不要・案件終了</span>
-                          </span>
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>調査不要・案件終了</span>
+                            </span>
+                            {(r.autoCompletedByDocScope || (r.notes && r.notes.includes('P列'))) && (
+                              <span className="text-[10px] text-slate-500 block">
+                                P列結果連動
+                              </span>
+                            )}
+                          </div>
                         ) : r.surveyRequirement === 'required' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
                             <Calendar className="w-3.5 h-3.5" />

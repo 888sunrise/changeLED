@@ -74,7 +74,7 @@ const COLUMN_SPECS: { key: keyof StoreRecord; col: string; label: string; aliase
   { key: 'phoneContact', col: 'M', label: '電話口担当', aliases: ['電話口担当', '電話口担当者', '電話口', '対応者', '対応者氏名', '電話', '担当者'] },
   { key: 'surveyAssignee', col: 'N', label: '調査担当', aliases: ['調査担当', '現地調査担当'] },
   { key: 'surveyDate', col: 'O', label: '調査日', aliases: ['調査日', '訪問日', '訪問予定日'] },
-  { key: 'surveyDocCollection', col: 'P', label: '調査資料回収', aliases: ['調査資料回収', '資料回収'] },
+  { key: 'surveyDocCollection', col: 'P', label: '調査資料回収・結果', aliases: ['調査資料回収・結果', '調査資料回収', '資料回収'] },
   { key: 'replacementRequest', col: 'Q', label: '置き換え依頼', aliases: ['置き換え依頼', '切替依頼'] },
   { key: 'itemOrdering', col: 'R', label: '商品手配', aliases: ['商品手配', '部材手配'] },
   { key: 'workAssignee', col: 'S', label: '作業担当', aliases: ['作業担当', '工事担当'] },

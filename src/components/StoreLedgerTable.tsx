@@ -232,6 +232,10 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
     const target = records.find((r) => r.no === storeNo);
     if (!target) return;
     const updated = { ...target, [field]: value };
+    // If P (surveyDocCollection) is set to '対象外', auto-set U (completion) to '完了'
+    if (field === 'surveyDocCollection' && value === '対象外') {
+      updated.completion = '完了';
+    }
     onUpdateRecord(updated);
     showToast(`NO.${storeNo} ${target.storeName} の「${fieldLabel(field)}」を更新しました`);
   };
@@ -244,8 +248,12 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
 
   const handleSaveModal = () => {
     if (!editFormData) return;
-    onUpdateRecord(editFormData);
-    showToast(`NO.${editFormData.no} ${editFormData.storeName} の内容を保存しました`);
+    const finalData = { ...editFormData };
+    if (finalData.surveyDocCollection === '対象外') {
+      finalData.completion = '完了';
+    }
+    onUpdateRecord(finalData);
+    showToast(`NO.${finalData.no} ${finalData.storeName} の内容を保存しました`);
     setEditingStoreNo(null);
     setEditFormData(null);
   };
@@ -268,7 +276,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       '電話口担当',
       '調査担当',
       '調査日',
-      '調査資料回収',
+      '調査資料回収・結果',
       '置き換え依頼',
       '商品手配',
       '作業担当',
@@ -321,7 +329,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       phoneContact: '電話口担当 (M)',
       surveyAssignee: '調査担当 (N)',
       surveyDate: '調査日 (O)',
-      surveyDocCollection: '調査資料回収 (P)',
+      surveyDocCollection: '調査資料回収・結果 (P)',
       replacementRequest: '置き換え依頼 (Q)',
       itemOrdering: '商品手配 (R)',
       workAssignee: '作業担当 (S)',
@@ -499,7 +507,6 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
               <option value="all">すべて</option>
               <option value="未完了">未完了</option>
               <option value="完了">完了</option>
-              <option value="保留">保留</option>
             </select>
           </div>
         </div>
@@ -786,7 +793,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                   O: 調査日
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  P: 調査資料回収
+                  P: 調査資料回収・結果
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
                   Q: 置き換え依頼
@@ -1121,7 +1128,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         />
                       </td>
 
-                      {/* P: 調査資料回収 */}
+                      {/* P: 調査資料回収・結果 */}
                       <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
                           value={r.surveyDocCollection}
@@ -1131,14 +1138,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                               ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
                               : r.surveyDocCollection === '回収済'
                               ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
-                              : r.surveyDocCollection === '不要'
+                              : r.surveyDocCollection === '対象外' || r.surveyDocCollection === '不要'
                               ? 'text-slate-400 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : 'text-amber-700 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未回収">未回収</option>
                           <option value="回収済">回収済</option>
-                          <option value="不要">不要</option>
+                          <option value="対象外">対象外</option>
                         </select>
                       </td>
 
@@ -1227,15 +1234,11 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                           className={`px-2 py-1 text-xs rounded border focus:outline-hidden font-bold ${
                             r.completion === '完了'
                               ? 'text-slate-900 bg-slate-300 border-slate-400 shadow-2xs font-extrabold ring-1 ring-slate-400'
-                              : r.completion === '保留'
-                              ? 'text-rose-800 bg-rose-100 border-transparent hover:border-slate-300'
                               : 'text-slate-600 bg-slate-100 border-transparent hover:border-slate-300'
                           }`}
                         >
                           <option value="未完了">未完了</option>
                           <option value="完了">完了</option>
-                          <option value="保留">保留</option>
-                          <option value="対象外">対象外</option>
                         </select>
                       </td>
 
@@ -1395,15 +1398,22 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">P: 調査資料回収</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">P: 調査資料回収・結果</label>
                   <select
                     value={editFormData.surveyDocCollection}
-                    onChange={(e) => setEditFormData({ ...editFormData, surveyDocCollection: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditFormData({
+                        ...editFormData,
+                        surveyDocCollection: val,
+                        ...(val === '対象外' ? { completion: '完了' } : {}),
+                      });
+                    }}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
                   >
                     <option value="未回収">未回収</option>
                     <option value="回収済">回収済</option>
-                    <option value="不要">不要</option>
+                    <option value="対象外">対象外</option>
                   </select>
                 </div>
 
@@ -1498,8 +1508,6 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                   >
                     <option value="未完了">未完了</option>
                     <option value="完了">完了</option>
-                    <option value="保留">保留</option>
-                    <option value="対象外">対象外</option>
                   </select>
                 </div>
 

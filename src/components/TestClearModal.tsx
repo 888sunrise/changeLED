@@ -94,7 +94,7 @@ export const TestClearModal: React.FC<TestClearModalProps> = ({
       hasData: Boolean(store.remarks1 && store.remarks1.trim() !== ''),
     },
     {
-      label: '調査資料回収',
+      label: '調査資料回収・結果',
       col: 'P列',
       currentValue: store.surveyDocCollection || '未回収',
       afterValue: '未回収',

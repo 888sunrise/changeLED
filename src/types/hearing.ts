@@ -23,7 +23,7 @@ export type PhoneStatus =
   | '着信拒否'
   | string;
 
-export type SurveyDocStatus = '未回収' | '回収済' | '不要' | string;
+export type SurveyDocStatus = '未回収' | '回収済' | '対象外' | string;
 
 export type ReplaceRequestStatus = '未依頼' | '依頼済' | '対象外' | string;
 
@@ -31,7 +31,7 @@ export type ItemOrderStatus = '未手配' | '手配済' | '納品待ち' | '完�
 
 export type ScheduleNoticeStatus = '未連絡' | '連絡済' | '日程調整中' | string;
 
-export type CompletionStatus = '未完了' | '完了' | '保留' | '対象外' | string;
+export type CompletionStatus = '未完了' | '完了' | string;
 
 export interface StoreRecord {
   // A〜I列（入力禁止・基本マスタ情報）
@@ -52,12 +52,12 @@ export interface StoreRecord {
   phoneContact?: string;            // M: 電話口担当（対応者氏名）
   surveyAssignee: string;           // N: 調査担当
   surveyDate: string;               // O: 調査日（YYYY-MM-DD 等）
-  surveyDocCollection: SurveyDocStatus; // P: 調査資料回収（未回収 / 回収済 / 不要）
+  surveyDocCollection: SurveyDocStatus; // P: 調査資料回収・結果（未回収 / 回収済 / 対象外）
   replacementRequest: ReplaceRequestStatus; // Q: 置き換え依頼（未依頼 / 依頼済 / 対象外）
   itemOrdering: ItemOrderStatus;    // R: 商品手配（未手配 / 手配済 / 完了）
   workAssignee: string;             // S: 作業担当
   scheduleNotice: ScheduleNoticeStatus; // T: 日程連絡（未連絡 / 連絡済）
-  completion: CompletionStatus;     // U: 完了（未完了 / 完了 / 保留）
+  completion: CompletionStatus;     // U: 完了（未完了 / 完了）
   callStatus?: PhoneStatus;         // V: 電話状況（未架電 / 完了 / 出ず / 留守電 / 折返待ち / 再連絡待ち / 担当不在 等）
 
   // 訪問後・進捗管理フィールド（通話ナビ2用）
@@ -112,6 +112,7 @@ export interface HearingRecord {
   callStatus?: string;              // 例: '電話するも出ず' | '留守電' | '折返待ち' | '再連絡待ち' | '完了'
   callbackScheduledAt?: string;     // 再連絡日時 (YYYY-MM-DD HH:mm 等)
   callbackNotes?: string;           // 再連絡に関するメモ
+  autoCompletedByDocScope?: boolean; // P列「対象外」により全灯LED済・案件終了に自動連動されたフラグ
 }
 
 // 互換性およびスクリプト用の定義

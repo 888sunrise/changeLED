@@ -47,13 +47,14 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Zone 3: Quick Action & Calling Status */}
-          <div className="flex items-center gap-2.5 shrink-0 ml-3">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-3">
             {selectedStoreName && (
               <span className="hidden sm:inline-flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-medium whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span>通話中: <strong>{selectedStoreName}</strong></span>
               </span>
             )}
+
             <button
               onClick={onNewCall}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-xs whitespace-nowrap cursor-pointer"

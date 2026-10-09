@@ -254,6 +254,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
       if (stageFilter === 'doc_pending') {
         return (
           s.surveyDocCollection !== '回収済' &&
+          s.surveyDocCollection !== '対象外' &&
           s.surveyDocCollection !== '不要' &&
           s.completion !== '完了'
         );
@@ -297,7 +298,8 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
 
     visitDateStores.forEach((s) => {
       const isDocCollected = s.surveyDocCollection === '回収済' || Boolean(s.surveyDocDate);
-      if (!isDocCollected && s.completion !== '完了') {
+      const isExcluded = s.surveyDocCollection === '対象外' || s.surveyDocCollection === '不要';
+      if (!isDocCollected && !isExcluded && s.completion !== '完了') {
         docPendingCount++;
       }
       if (isDocCollected) {
@@ -351,6 +353,11 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
     // If replacementRequest is '依頼済' and date empty, default today
     if (field === 'replacementRequest' && value === '依頼済' && !updated.replacementRequestDate) {
       updated.replacementRequestDate = getTodayString();
+    }
+    // If surveyDocCollection is '対象外', auto-set completion to '完了' (対象外=作業は発生しないので全行程完了扱い)
+    if (field === 'surveyDocCollection' && value === '対象外') {
+      updated.completion = '完了';
+      showToast(`「${store.storeName}」のP列を「対象外」に設定：U列:完了 および 記録カルテ:全灯LED済 に自動連動しました`);
     }
 
     onUpdateStore(updated);
@@ -627,7 +634,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                     N: 調査担当
                   </th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[100px] bg-amber-50/60 text-amber-900">
-                    P: 調査資料回収
+                    P: 調査資料回収・結果
                   </th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[140px] bg-amber-50/80 text-amber-950 font-black">
                     ★ 調査書類回収日付
@@ -805,7 +812,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           />
                         </td>
 
-                        {/* P: 調査資料回収 */}
+                        {/* P: 調査資料回収・結果 */}
                         <td className="py-1.5 px-2 border-r border-slate-200 bg-amber-50/20">
                           <select
                             value={r.surveyDocCollection || '未回収'}
@@ -813,14 +820,14 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                             className={`w-full text-xs px-1.5 py-1 rounded border font-medium focus:ring-1 focus:ring-amber-500 focus:outline-hidden ${
                               r.surveyDocCollection === '回収済'
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
-                                : r.surveyDocCollection === '不要'
+                                : r.surveyDocCollection === '対象外' || r.surveyDocCollection === '不要'
                                 ? 'bg-slate-100 text-slate-500 border-slate-300'
                                 : 'bg-amber-50 text-amber-800 border-amber-300'
                             }`}
                           >
                             <option value="未回収">未回収</option>
                             <option value="回収済">回収済</option>
-                            <option value="不要">不要</option>
+                            <option value="対象外">対象外</option>
                           </select>
                         </td>
 
@@ -964,8 +971,6 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           >
                             <option value="未完了">未完了</option>
                             <option value="完了">完了</option>
-                            <option value="保留">保留</option>
-                            <option value="対象外">対象外</option>
                           </select>
                         </td>
 
@@ -1327,7 +1332,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                         </span>
                         <div>
                           <h3 className="font-bold text-slate-900 text-sm">
-                            STEP 2: 調査書類・写真の回収（P列 調査資料回収 & 回収日付）
+                            STEP 2: 調査書類・写真の回収（P列 調査資料回収・結果 & 回収日付）
                           </h3>
                           <p className="text-xs text-slate-500">
                             現地調査員から上がってきた調査票・写真・分電盤図などの回収完了日付を記録します。
@@ -1339,7 +1344,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          P列: 調査資料回収ステータス
+                          P列: 調査資料回収・結果ステータス
                         </label>
                         <select
                           value={selectedStore.surveyDocCollection || '未回収'}
@@ -1349,15 +1354,20 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           className={`w-full text-xs px-3 py-2 rounded-xl border font-bold focus:outline-hidden ${
                             selectedStore.surveyDocCollection === '回収済'
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                              : selectedStore.surveyDocCollection === '不要'
+                              : selectedStore.surveyDocCollection === '対象外' || selectedStore.surveyDocCollection === '不要'
                               ? 'bg-slate-100 text-slate-500 border-slate-300'
                               : 'bg-amber-50 text-amber-800 border-amber-300'
                           }`}
                         >
                           <option value="未回収">未回収（回収待ち）</option>
                           <option value="回収済">回収済（書類確認完了）</option>
-                          <option value="不要">不要（調査免除等）</option>
+                          <option value="対象外">対象外（全行程完了）</option>
                         </select>
+                        {selectedStore.surveyDocCollection === '対象外' && (
+                          <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mt-1.5 leading-snug">
+                            ★ P列「対象外」連動中：工事等の作業不要のため、U列:完了、および記録カルテのLED化状況「全灯LED済」（ダッシュボード「案件終了・調査不要」）に自動反映されています。
+                          </p>
+                        )}
                       </div>
 
                       <div>
@@ -1803,9 +1813,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           }`}
                         >
                           <option value="未完了">未完了（進行中）</option>
-                          <option value="完了">完了（全工事・確認完了）</option>
-                          <option value="保留">保留</option>
-                          <option value="対象外">対象外</option>
+                          <option value="完了">完了（全行程完了）</option>
                         </select>
                       </div>
 

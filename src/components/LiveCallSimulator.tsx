@@ -705,7 +705,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       onUpdateStoreField(selectedStoreNo, 'phoneContact', contactPerson || '');
       if (ledStatus === 'all_led') {
         onUpdateStoreField(selectedStoreNo, 'remarks1', '全灯LED済み（訪問調査不要）');
-        onUpdateStoreField(selectedStoreNo, 'surveyDocCollection', '不要');
+        onUpdateStoreField(selectedStoreNo, 'surveyDocCollection', '対象外');
         onUpdateStoreField(selectedStoreNo, 'replacementRequest', '対象外');
         onUpdateStoreField(selectedStoreNo, 'itemOrdering', '完了');
         onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
