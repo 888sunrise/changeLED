@@ -1026,7 +1026,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                   </label>
                   <input
                     type="tel"
-                    placeholder="例: 080-4601-3074"
+                    placeholder="例: 080－□□□□-〇〇〇〇"
                     value={phoneNumber}
                     readOnly={Boolean(selectedStoreNo)}
                     onChange={(e) => setPhoneNumber(e.target.value)}
