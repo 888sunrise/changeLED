@@ -14,7 +14,7 @@ export const INITIAL_STORE_RECORDS: StoreRecord[] = [
     "address1": "千葉県習志野市",
     "address2": "津田沼１−１０−３４",
     "buildingName": "",
-    "storeMobile": "080-4601-3074",
+    "storeMobile": "080-□□□□-〇〇〇〇",
     "managementType": "直営",
     "remarks1": "",
     "category": "ビルイン",

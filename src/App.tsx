@@ -42,7 +42,9 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed;
+          return parsed.map((s) =>
+            s.storeMobile === '080-4601-3074' ? { ...s, storeMobile: '080-□□□□-〇〇〇〇' } : s
+          );
         }
       }
     } catch {}
@@ -79,10 +81,13 @@ export default function App() {
     // 1. Subscribe to Store Records (A〜T columns)
     const unsubStores = subscribeStoreRecords(
       (remoteStores) => {
-        setStores(remoteStores);
+        const sanitized = remoteStores.map((s) =>
+          s.storeMobile === '080-4601-3074' ? { ...s, storeMobile: '080-□□□□-〇〇〇〇' } : s
+        );
+        setStores(sanitized);
         setSyncStatus('connected');
         try {
-          localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify(remoteStores));
+          localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify(sanitized));
         } catch {}
       },
       (err) => {
@@ -235,6 +240,22 @@ export default function App() {
           autoCompletedByDocScope: false,
         };
         nextList[existingIdx] = recordToPersist;
+      }
+
+      // 調査確定日（O列）が確定された場合、カルテの訪問予定期間・時間を上書き更新（※〇日〜〇日⇒〇日で確定となるため通話ナビで登録した予定日は削除し上書き）
+      if (normalized.surveyConfirmed && normalized.surveyConfirmedDate) {
+        if (existingIdx >= 0) {
+          const existing = prev[existingIdx];
+          const updatedHearing: HearingRecord = {
+            ...(recordToPersist || existing),
+            visitPeriodStart: normalized.surveyConfirmedDate,
+            visitPeriodEnd: '', // 予定期間終了日は削除・クリア（単一日確定）
+            preferredDate1: normalized.surveyConfirmedDate,
+            preferredTimeSlot1: normalized.surveyConfirmedTime || existing.preferredTimeSlot1,
+          };
+          recordToPersist = updatedHearing;
+          nextList[existingIdx] = updatedHearing;
+        }
       }
 
       if (recordToPersist) {

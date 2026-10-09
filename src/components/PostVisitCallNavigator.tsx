@@ -35,6 +35,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { StoreRecord, HearingRecord } from '../types/hearing';
+import { ScheduleCalendarModal, CalendarType } from './ScheduleCalendarModal';
 
 interface PostVisitCallNavigatorProps {
   stores: StoreRecord[];
@@ -56,6 +57,20 @@ type FilterStage =
   | 'schedule_coordination'// 商品手配・工事日程連絡中
   | 'completed';           // 工事完了
 
+const TIME_SLOT_OPTIONS = [
+  '10:00',
+  '11:00',
+  '12:00',
+  '13:00',
+  '14:00',
+  '15:00',
+  '16:00',
+  '17:00',
+  '18:00',
+  '19:00',
+  '20:00',
+];
+
 export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
   stores = [],
   records = [],
@@ -75,6 +90,26 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
 
   // Success toast notice
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+
+  // Calendar Popup Modal state
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarInitialType, setCalendarInitialType] = useState<CalendarType>('survey');
+
+  const handleOpenCalendar = (type: CalendarType) => {
+    setCalendarInitialType(type);
+    setIsCalendarOpen(true);
+  };
+
+  const handleSelectStoreFromCalendar = (storeNo: number, step: number = 1) => {
+    setSelectedStoreNo(storeNo);
+    setGuidedStep(step);
+    setViewMode('guided');
+    const target = stores.find((s) => s.no === storeNo);
+    if (target) {
+      showToast(`「${target.storeName}」を選択しました`);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Helper to show temporary toast
   const showToast = (msg: string) => {
@@ -220,6 +255,98 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
     return getHearingRecord(selectedStore);
   }, [selectedStore, records]);
 
+  // STEP 1: 調査実施予定日/確定日 および 時間の入力ステート
+  const [surveyConfirmDate, setSurveyConfirmDate] = useState<string>('');
+  const [surveyConfirmTime, setSurveyConfirmTime] = useState<string>('10:00');
+
+  // 選択店舗が切り替わった際に確定日・時間を初期化/同期
+  React.useEffect(() => {
+    if (!selectedStore) return;
+    if (selectedStore.surveyConfirmedDate) {
+      setSurveyConfirmDate(selectedStore.surveyConfirmedDate);
+    } else if (
+      selectedStore.surveyDate &&
+      !selectedStore.surveyDate.includes('〜') &&
+      !selectedStore.surveyDate.includes('～') &&
+      !selectedStore.surveyDate.includes('~')
+    ) {
+      const parts = selectedStore.surveyDate.trim().split(/\s+/);
+      setSurveyConfirmDate(parts[0]);
+      if (parts[1]) setSurveyConfirmTime(parts[1]);
+    } else if (selectedHearing?.visitPeriodStart) {
+      setSurveyConfirmDate(selectedHearing.visitPeriodStart);
+    } else {
+      setSurveyConfirmDate(getTodayString());
+    }
+
+    if (selectedStore.surveyConfirmedTime) {
+      setSurveyConfirmTime(selectedStore.surveyConfirmedTime);
+    } else if (selectedHearing?.preferredTimeSlot1) {
+      const match = selectedHearing.preferredTimeSlot1.match(/(\d{1,2}:\d{2})/);
+      if (match) {
+        setSurveyConfirmTime(match[1]);
+      } else {
+        setSurveyConfirmTime('10:00');
+      }
+    } else {
+      setSurveyConfirmTime('10:00');
+    }
+  }, [selectedStore?.no, selectedHearing?.visitPeriodStart]);
+
+  // 通話ナビ（ヒアリング）からの引継ぎ予定期間
+  const inheritedPeriod = useMemo(() => {
+    if (!selectedStore) return '';
+    if (selectedHearing?.visitPeriodStart && selectedHearing?.visitPeriodEnd) {
+      return `${selectedHearing.visitPeriodStart} 〜 ${selectedHearing.visitPeriodEnd}`;
+    }
+    if (selectedHearing?.visitPeriodStart) {
+      return `${selectedHearing.visitPeriodStart} 以降`;
+    }
+    if (
+      selectedStore.surveyDate &&
+      (selectedStore.surveyDate.includes('〜') ||
+        selectedStore.surveyDate.includes('～') ||
+        selectedStore.surveyDate.includes('~'))
+    ) {
+      return selectedStore.surveyDate;
+    }
+    return '';
+  }, [selectedStore, selectedHearing]);
+
+  // STEP 1: 確定ボタン押下処理（※〇日～〇日⇒〇日で確定となるため通話ナビで登録した予定日は削除し上書き）
+  const handleConfirmSurveySchedule = () => {
+    if (!selectedStore) return;
+    const dateVal = surveyConfirmDate || getTodayString();
+    const timeVal = surveyConfirmTime || '10:00';
+
+    const updated: StoreRecord = {
+      ...selectedStore,
+      surveyConfirmed: true,
+      surveyConfirmedDate: dateVal,
+      surveyConfirmedTime: timeVal,
+      surveyDate: dateVal, // 予定期間は削除され確定日で上書き
+    };
+
+    onUpdateStore(updated);
+    showToast(
+      `「${selectedStore.storeName}」の調査確定日時（${dateVal} ${timeVal}）を確定しました。「事前調査確定用」カレンダーに反映されました。`
+    );
+  };
+
+  // STEP 1: 確定解除処理
+  const handleCancelSurveyConfirmation = () => {
+    if (!selectedStore) return;
+    const updated: StoreRecord = {
+      ...selectedStore,
+      surveyConfirmed: false,
+      surveyConfirmedDate: undefined,
+      surveyConfirmedTime: undefined,
+      surveyDate: inheritedPeriod || '',
+    };
+    onUpdateStore(updated);
+    showToast(`「${selectedStore.storeName}」の調査確定を解除しました（カレンダーから除外）`);
+  };
+
   // Helper date formatted YYYY-MM-DD
   const getTodayString = () => {
     const d = new Date();
@@ -311,7 +438,7 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
       if (s.replacementRequest === '依頼済' || Boolean(s.replacementRequestDate)) {
         replacementRequestedCount++;
       }
-      if (s.scheduleNotice === '連絡済') {
+      if (s.scheduleNotice === '作業日程確定' || s.scheduleNotice === '連絡済') {
         scheduleNotifiedCount++;
       }
       if (s.completion === '完了') {
@@ -328,6 +455,31 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
       scheduleNotifiedCount,
       completedCount,
     };
+  }, [visitDateStores]);
+
+  // Calendar event count metrics（事前調査確定用カレンダーは確定店舗のみ）
+  const surveyCalendarCount = useMemo(() => {
+    return visitDateStores.filter((s) =>
+      Boolean(
+        s.surveyConfirmed === true ||
+        s.surveyConfirmedDate ||
+        (s.surveyDate &&
+          !s.surveyDate.includes('〜') &&
+          !s.surveyDate.includes('～') &&
+          !s.surveyDate.includes('~') &&
+          s.surveyDate.trim() !== '')
+      )
+    ).length;
+  }, [visitDateStores]);
+
+  const workCalendarCount = useMemo(() => {
+    return visitDateStores.filter((s) =>
+      Boolean(
+        (s.scheduleNotice === '作業日程確定' || s.scheduleNotice === '連絡済') &&
+        s.workScheduleDate &&
+        s.workScheduleDate.trim() !== ''
+      )
+    ).length;
   }, [visitDateStores]);
 
   // Quick field updater for table
@@ -358,6 +510,21 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
     if (field === 'surveyDocCollection' && value === '対象外') {
       updated.completion = '完了';
       showToast(`「${store.storeName}」のP列を「対象外」に設定：U列:完了 および 記録カルテ:全灯LED済 に自動連動しました`);
+    }
+
+    // Auto-correlations for T列: 作業日程確定
+    if (field === 'scheduleNotice' && (value === '作業日程確定' || value === '連絡済') && !updated.workScheduleDate) {
+      updated.workScheduleDate = getTodayString();
+      showToast(`「${store.storeName}」の作業日程確定（${getTodayString()}）をカレンダーに追加しました`);
+    }
+    if (field === 'workScheduleDate' && value) {
+      updated.scheduleNotice = '作業日程確定';
+      showToast(`「${store.storeName}」の作業確定日（${value}）を作業日程用カレンダーに反映しました`);
+    }
+    if (field === 'surveyDate' && value) {
+      updated.surveyConfirmed = true;
+      updated.surveyConfirmedDate = value;
+      showToast(`「${store.storeName}」の調査確定日（${value}）を事前調査確定用カレンダーに反映しました`);
     }
 
     onUpdateStore(updated);
@@ -429,36 +596,68 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
           </div>
 
           {/* Mode Switcher Buttons */}
-          <div className="flex items-center gap-2 self-start lg:self-auto bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'list'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-              }`}
-            >
-              <Table className="w-4 h-4" />
-              <span>一覧クイック入力台帳</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setViewMode('guided');
-                if (!selectedStoreNo && stores.length > 0) {
-                  setSelectedStoreNo(stores[0].no);
-                }
-              }}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'guided'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-              }`}
-            >
-              <PhoneCall className="w-4 h-4" />
-              <span>通話ナビ2・対話ガイダンス</span>
-            </button>
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Calendar Launch Buttons */}
+            <div className="flex items-center gap-2 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => handleOpenCalendar('survey')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-400/30 shadow-xs cursor-pointer"
+                title="STEP 1で調査確定日時が登録された店舗の「事前調査確定用カレンダー」を表示"
+              >
+                <Calendar className="w-4 h-4 text-blue-300" />
+                <span>事前調査確定用カレンダー</span>
+                <span className="bg-blue-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                  {surveyCalendarCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenCalendar('work')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-400/30 shadow-xs cursor-pointer"
+                title="T:作業日程確定・作業日が入った店舗の工事日程カレンダーを表示"
+              >
+                <CalendarClock className="w-4 h-4 text-emerald-300" />
+                <span>作業日程用カレンダー</span>
+                <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                  {workCalendarCount}
+                </span>
+              </button>
+            </div>
+
+            {/* List / Guided Mode Switcher */}
+            <div className="flex items-center gap-1.5 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                }`}
+              >
+                <Table className="w-4 h-4" />
+                <span>一覧台帳</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('guided');
+                  if (!selectedStoreNo && stores.length > 0) {
+                    setSelectedStoreNo(stores[0].no);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'guided'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                }`}
+              >
+                <PhoneCall className="w-4 h-4" />
+                <span>対話ガイダンス</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -627,8 +826,8 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 w-12 text-center">NO</th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[170px]">店舗情報（A〜D列）</th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[130px]">事前調査判定 / 予定</th>
-                  <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[140px] bg-blue-50/60 text-blue-900">
-                    O: 調査日（訪問日）
+                  <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[150px] bg-blue-50/60 text-blue-900">
+                    O: 調査実施予定日/確定日
                   </th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[110px] bg-blue-50/60 text-blue-900">
                     N: 調査担当
@@ -654,8 +853,8 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[110px]">
                     S: 作業担当
                   </th>
-                  <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[100px]">
-                    T: 日程連絡
+                  <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[140px] bg-emerald-50/50 text-emerald-950 font-bold">
+                    T: 作業日程連絡ステータス
                   </th>
                   <th className="py-2.5 px-3 border-b border-r border-slate-300 min-w-[90px]">
                     U: 完了
@@ -779,24 +978,42 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           )}
                         </td>
 
-                        {/* O: 調査日 */}
+                        {/* O: 調査実施予定日/確定日 */}
                         <td className="py-1.5 px-2 border-r border-slate-200 bg-blue-50/20">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="date"
-                              value={r.surveyDate || ''}
-                              onChange={(e) => handleTableFieldChange(r.no, 'surveyDate', e.target.value)}
-                              className="w-full text-xs px-1.5 py-1 bg-white border border-slate-200 rounded font-medium focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
-                            />
-                            {!r.surveyDate && (
-                              <button
-                                type="button"
-                                title="本日を設定"
-                                onClick={() => handleTableFieldChange(r.no, 'surveyDate', getTodayString())}
-                                className="px-1 py-1 text-[10px] font-bold bg-blue-100 hover:bg-blue-200 text-blue-800 rounded shrink-0 cursor-pointer"
-                              >
-                                今日
-                              </button>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={
+                                  r.surveyConfirmedDate ||
+                                  (r.surveyDate && !r.surveyDate.includes('〜') && !r.surveyDate.includes('～')
+                                    ? r.surveyDate
+                                    : '')
+                                }
+                                onChange={(e) => handleTableFieldChange(r.no, 'surveyDate', e.target.value)}
+                                className="w-full text-xs px-1.5 py-1 bg-white border border-slate-200 rounded font-medium focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
+                              />
+                              {!r.surveyDate && (
+                                <button
+                                  type="button"
+                                  title="本日を設定"
+                                  onClick={() => handleTableFieldChange(r.no, 'surveyDate', getTodayString())}
+                                  className="px-1 py-1 text-[10px] font-bold bg-blue-100 hover:bg-blue-200 text-blue-800 rounded shrink-0 cursor-pointer"
+                                >
+                                  今日
+                                </button>
+                              )}
+                            </div>
+                            {r.surveyConfirmed && (
+                              <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                                <span className="bg-emerald-100 px-1 py-0.2 rounded">確定済</span>
+                                {r.surveyConfirmedTime && <span>{r.surveyConfirmedTime}</span>}
+                              </div>
+                            )}
+                            {!r.surveyConfirmed && r.surveyDate && (r.surveyDate.includes('〜') || r.surveyDate.includes('～')) && (
+                              <div className="text-[10px] text-amber-700 font-mono truncate" title={r.surveyDate}>
+                                予定: {r.surveyDate}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -941,21 +1158,36 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           />
                         </td>
 
-                        {/* T: 日程連絡 */}
-                        <td className="py-1.5 px-2 border-r border-slate-200">
+                        {/* T: 作業日程連絡ステータス & 確定日 */}
+                        <td className="py-1.5 px-2 border-r border-slate-200 bg-emerald-50/20">
                           <select
-                            value={r.scheduleNotice || '未連絡'}
+                            value={
+                              r.scheduleNotice === '連絡済'
+                                ? '作業日程確定'
+                                : r.scheduleNotice || '未連絡'
+                            }
                             onChange={(e) => handleTableFieldChange(r.no, 'scheduleNotice', e.target.value)}
                             className={`w-full text-xs px-1.5 py-1 rounded border font-medium focus:outline-hidden ${
-                              r.scheduleNotice === '連絡済'
+                              r.scheduleNotice === '作業日程確定' || r.scheduleNotice === '連絡済'
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
                                 : 'bg-white text-slate-700 border-slate-300'
                             }`}
                           >
                             <option value="未連絡">未連絡</option>
-                            <option value="連絡済">連絡済</option>
+                            <option value="作業日程確定">作業日程確定</option>
                             <option value="日程調整中">日程調整中</option>
                           </select>
+                          {(r.scheduleNotice === '作業日程確定' || r.scheduleNotice === '連絡済') && (
+                            <div className="mt-1 flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={r.workScheduleDate || ''}
+                                onChange={(e) => handleTableFieldChange(r.no, 'workScheduleDate', e.target.value)}
+                                className="w-full text-[11px] px-1 py-0.5 bg-white border border-emerald-300 rounded font-bold text-slate-800 focus:outline-hidden"
+                                title="作業確定日（工事日程）"
+                              />
+                            </div>
+                          )}
                         </td>
 
                         {/* U: 完了 */}
@@ -1236,77 +1468,199 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                   </div>
                 </div>
 
-                {/* STEP 1: 現地調査の完了確認 */}
+                {/* STEP 1: 現地調査の予定・確定日 */}
                 {guidedStep === 1 && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5 animate-in fade-in duration-200">
-                    <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                    <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-xs font-black flex items-center justify-center">
+                        <span className="w-7 h-7 rounded-lg bg-blue-600 text-white text-xs font-black flex items-center justify-center shrink-0">
                           1
                         </span>
                         <div>
                           <h3 className="font-bold text-slate-900 text-sm">
-                            STEP 1: 現地調査の実施結果の確認（O列 調査日 / N列 調査担当）
+                            STEP 1: 現地調査の予定・確定日（O列: 調査実施予定日/確定日 / N列: 調査担当）
                           </h3>
                           <p className="text-xs text-slate-500">
-                            実際に店舗への訪問調査が行われた日付と調査担当者を確認・記録します。
+                            通話ナビで登録された予定日を引き継ぎ、実際に調査担当が行く日が確定したタイミングで確定日・時間（10:00〜20:00）を上書き確定します。「確定」ボタンを押すと事前調査確定用カレンダーに反映されます。
                           </p>
                         </div>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCalendar('survey')}
+                        className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs self-start sm:self-auto shrink-0"
+                        title="事前調査確定用カレンダーを開く"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                        <span>事前調査確定用カレンダー</span>
+                        <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                          {surveyCalendarCount}
+                        </span>
+                      </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          O列: 調査実施日
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="date"
-                            value={selectedStore.surveyDate || ''}
-                            onChange={(e) =>
-                              handleTableFieldChange(selectedStore.no, 'surveyDate', e.target.value)
-                            }
-                            className="flex-1 text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleTableFieldChange(selectedStore.no, 'surveyDate', getTodayString())
-                            }
-                            className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    {/* Confirmation State or Inherited Range Banner */}
+                    {selectedStore.surveyConfirmed || Boolean(selectedStore.surveyConfirmedDate) ? (
+                      <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 text-xs text-emerald-950 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center gap-1 shadow-2xs">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>調査日時 確定済</span>
+                            </span>
+                            <span className="font-black text-sm font-mono text-slate-900">
+                              {selectedStore.surveyConfirmedDate || selectedStore.surveyDate}
+                              {selectedStore.surveyConfirmedTime && (
+                                <span className="ml-1.5 text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded font-mono font-bold">
+                                  {selectedStore.surveyConfirmedTime}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                              ★ 事前調査確定用カレンダー反映中
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCalendar('survey')}
+                              className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>カレンダーで確認 ↗</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelSurveyConfirmation}
+                              className="px-2 py-1 text-[11px] font-medium text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="確定を解除して未確定状態に戻します"
+                            >
+                              確定解除
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-emerald-850 leading-relaxed">
+                          通話ナビで登録されていた予定期間（〇日～〇日）は確定日（{selectedStore.surveyConfirmedDate || selectedStore.surveyDate}）で削除・上書きされ、「事前調査確定用カレンダー」に追加されています。確定日や時間を変更したい場合は下記を修正して再度「確定」ボタンを押してください。
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold flex items-center gap-1.5 text-blue-900">
+                            <CalendarClock className="w-4 h-4 text-blue-600" />
+                            <span>通話ナビからの引継ぎ予定期間:</span>
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                            訪問日未確定（カレンダー未反映）
+                          </span>
+                        </div>
+                        <div className="pl-5 text-sm font-black font-mono text-slate-800">
+                          {inheritedPeriod ? inheritedPeriod : '通話ナビでの予定期間未登録'}
+                        </div>
+                        <p className="text-[11px] text-slate-600 pl-5 leading-relaxed">
+                          ※調査担当が実際に訪問する日が確定したら、下の<strong>「確定日」</strong>と<strong>「確定時間（10時〜20時）」</strong>を選択し、<strong>「確定してカレンダーに反映」</strong>ボタンを押してください。通話ナビで登録した予定期間（〇日～〇日）は削除され、確定日で上書きされてカレンダーに反映されます。
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Date & Time Selection Box */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-blue-600" />
+                          <span>O列: 調査実施予定日/確定日 および 時間の設定</span>
+                        </h4>
+                        <span className="text-[11px] text-slate-500">
+                          ※確定ボタンを押すことでカレンダーに反映されます
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Confirmed Date */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            調査確定日（訪問日）
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="date"
+                              value={surveyConfirmDate}
+                              onChange={(e) => setSurveyConfirmDate(e.target.value)}
+                              className="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSurveyConfirmDate(getTodayString())}
+                              className="px-2.5 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
+                            >
+                              本日
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Confirmed Time Slot: 10時〜20時 各1時間 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            調査確定時間（10時〜20時）
+                          </label>
+                          <select
+                            value={surveyConfirmTime}
+                            onChange={(e) => setSurveyConfirmTime(e.target.value)}
+                            className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                           >
-                            本日
-                          </button>
+                            {TIME_SLOT_OPTIONS.map((t) => (
+                              <option key={t} value={t}>
+                                {t} （{t.slice(0, 2)}時〜）
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* N列: 調査担当 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            N列: 調査担当（調査員・調査会社）
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="例: 佐藤調査員 / 〇〇電気"
+                            value={selectedStore.surveyAssignee || ''}
+                            onChange={(e) =>
+                              handleTableFieldChange(selectedStore.no, 'surveyAssignee', e.target.value)
+                            }
+                            className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                          />
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          N列: 調査担当（調査員・調査会社）
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="例: 佐藤調査員 / 〇〇電気"
-                          value={selectedStore.surveyAssignee || ''}
-                          onChange={(e) =>
-                            handleTableFieldChange(selectedStore.no, 'surveyAssignee', e.target.value)
-                          }
-                          className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                        />
-                      </div>
-                    </div>
+                      {/* Action Button: 確定ボタン */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200">
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span>
+                            確定ボタンを押すと、通話ナビの予定期間は削除され「{surveyConfirmDate || '未選択'} {surveyConfirmTime}」で確定上書きされます。
+                          </span>
+                        </div>
 
-                    {/* Quick status guide */}
-                    <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900 space-y-1">
-                      <span className="font-bold flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                        <span>ガイダンス:</span>
-                      </span>
-                      <p className="text-slate-600 pl-5 leading-relaxed">
-                        現地調査が完了している場合は調査日を入力してください。
-                        調査日が登録されると、次の「STEP 2: 調査書類の回収」へ進んで回収日を記録できます。
-                      </p>
+                        <button
+                          type="button"
+                          onClick={handleConfirmSurveySchedule}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                            selectedStore.surveyConfirmed
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>
+                            {selectedStore.surveyConfirmed
+                              ? '確定日時を変更して再保存（カレンダー更新）'
+                              : '確定してカレンダーに反映'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-end gap-2 pt-2">
@@ -1683,24 +2037,68 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          T列: 日程連絡ステータス
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-slate-700">
+                            T列: 作業日程連絡ステータス
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCalendar('work')}
+                            className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <CalendarClock className="w-3.5 h-3.5" />
+                            <span>カレンダーで確認</span>
+                          </button>
+                        </div>
                         <select
-                          value={selectedStore.scheduleNotice || '未連絡'}
-                          onChange={(e) =>
-                            handleTableFieldChange(selectedStore.no, 'scheduleNotice', e.target.value)
-                          }
-                          className={`w-full text-xs px-3 py-2 rounded-xl border font-bold focus:outline-hidden ${
+                          value={
                             selectedStore.scheduleNotice === '連絡済'
+                              ? '作業日程確定'
+                              : selectedStore.scheduleNotice || '未連絡'
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleTableFieldChange(selectedStore.no, 'scheduleNotice', val);
+                          }}
+                          className={`w-full text-xs px-3 py-2 rounded-xl border font-bold focus:outline-hidden ${
+                            selectedStore.scheduleNotice === '作業日程確定' || selectedStore.scheduleNotice === '連絡済'
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                               : 'bg-slate-50 text-slate-700 border-slate-200'
                           }`}
                         >
                           <option value="未連絡">未連絡</option>
-                          <option value="連絡済">連絡済（店舗承諾済）</option>
+                          <option value="作業日程確定">作業日程確定</option>
                           <option value="日程調整中">日程調整中</option>
                         </select>
+
+                        {(selectedStore.scheduleNotice === '作業日程確定' || selectedStore.scheduleNotice === '連絡済') && (
+                          <div className="mt-2.5 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5 animate-in fade-in duration-150">
+                            <label className="block text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>作業確定日（工事日程）</span>
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="date"
+                                value={selectedStore.workScheduleDate || ''}
+                                onChange={(e) =>
+                                  handleTableFieldChange(selectedStore.no, 'workScheduleDate', e.target.value)
+                                }
+                                className="flex-1 text-xs px-3 py-2 bg-white border border-emerald-300 rounded-lg font-bold text-slate-900 focus:outline-hidden"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleTableFieldChange(selectedStore.no, 'workScheduleDate', getTodayString())}
+                                className="px-2.5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
+                              >
+                                今日
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-emerald-800 leading-snug">
+                              ★ この作業確定日が「作業日程用カレンダー」に自動追加されます。
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1770,9 +2168,10 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                     {/* Progress Summary Cards */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
                       <div>
-                        <span className="text-slate-500 text-[11px] block">O: 調査実施日</span>
+                        <span className="text-slate-500 text-[11px] block">O: 調査実施予定日/確定日</span>
                         <span className="font-bold text-slate-800">
-                          {selectedStore.surveyDate || '未実施'}
+                          {selectedStore.surveyConfirmedDate || selectedStore.surveyDate || '未実施'}
+                          {selectedStore.surveyConfirmedTime ? ` (${selectedStore.surveyConfirmedTime})` : ''}
                         </span>
                       </div>
                       <div>
@@ -1788,9 +2187,10 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-500 text-[11px] block">T: 日程連絡</span>
+                        <span className="text-slate-500 text-[11px] block">T: 作業日程連絡</span>
                         <span className="font-bold text-emerald-700">
                           {selectedStore.scheduleNotice || '未連絡'}
+                          {selectedStore.workScheduleDate && ` (${selectedStore.workScheduleDate})`}
                         </span>
                       </div>
                     </div>
@@ -1876,6 +2276,16 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
           </div>
         </div>
       )}
+
+      {/* Schedule Calendar Modal Popup */}
+      <ScheduleCalendarModal
+        isOpen={isCalendarOpen}
+        onClose={() => setIsCalendarOpen(false)}
+        initialType={calendarInitialType}
+        stores={stores}
+        records={records}
+        onSelectStore={handleSelectStoreFromCalendar}
+      />
     </div>
   );
 };

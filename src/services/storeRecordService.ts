@@ -90,7 +90,13 @@ export function sanitizeStoreRecord(rec: StoreRecord): Record<string, any> {
     itemOrdering: String(rec.itemOrdering ?? '未手配').trim() || '未手配',
     workAssignee: String(rec.workAssignee ?? '').trim(),
     scheduleNotice: String(rec.scheduleNotice ?? '未連絡').trim() || '未連絡',
+    workScheduleDate: String(rec.workScheduleDate ?? '').trim(),
     completion: String(rec.completion ?? '未完了').trim() || '未完了',
+    surveyDocDate: String(rec.surveyDocDate ?? '').trim(),
+    surveyMaterialStartDate: String(rec.surveyMaterialStartDate ?? '').trim(),
+    surveyMaterialStatus: String(rec.surveyMaterialStatus ?? '').trim(),
+    replacementRequestDate: String(rec.replacementRequestDate ?? '').trim(),
+    postVisitNotes: String(rec.postVisitNotes ?? '').trim(),
     updatedAt: rec.updatedAt || new Date().toISOString(),
   };
 }

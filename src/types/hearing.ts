@@ -29,7 +29,7 @@ export type ReplaceRequestStatus = '未依頼' | '依頼済' | '対象外' | str
 
 export type ItemOrderStatus = '未手配' | '手配済' | '納品待ち' | '完了' | string;
 
-export type ScheduleNoticeStatus = '未連絡' | '連絡済' | '日程調整中' | string;
+export type ScheduleNoticeStatus = '未連絡' | '作業日程確定' | '連絡済' | '日程調整中' | string;
 
 export type CompletionStatus = '未完了' | '完了' | string;
 
@@ -51,12 +51,17 @@ export interface StoreRecord {
   hasDrawing: string;               // L: 図面有無（"○" または ""）
   phoneContact?: string;            // M: 電話口担当（対応者氏名）
   surveyAssignee: string;           // N: 調査担当
-  surveyDate: string;               // O: 調査日（YYYY-MM-DD 等）
+  surveyDate: string;               // O: 調査実施予定日/確定日（YYYY-MM-DD 等）
+  surveyConfirmed?: boolean;        // 調査確定フラグ（STEP 1の確定ボタン押下でカレンダー反映）
+  surveyConfirmedDate?: string;     // 調査確定日（YYYY-MM-DD）
+  surveyConfirmedTime?: string;     // 調査確定時間（10:00〜20:00 各1時間）
   surveyDocCollection: SurveyDocStatus; // P: 調査資料回収・結果（未回収 / 回収済 / 対象外）
   replacementRequest: ReplaceRequestStatus; // Q: 置き換え依頼（未依頼 / 依頼済 / 対象外）
   itemOrdering: ItemOrderStatus;    // R: 商品手配（未手配 / 手配済 / 完了）
   workAssignee: string;             // S: 作業担当
-  scheduleNotice: ScheduleNoticeStatus; // T: 日程連絡（未連絡 / 連絡済）
+  scheduleNotice: ScheduleNoticeStatus; // T: 作業日程連絡ステータス（未連絡 / 作業日程確定 / 日程調整中）
+  workScheduleDate?: string;        // 作業確定日 / 工事日程（YYYY-MM-DD）
+  workScheduleTime?: string;        // 作業確定時間（例: 10:00）
   completion: CompletionStatus;     // U: 完了（未完了 / 完了）
   callStatus?: PhoneStatus;         // V: 電話状況（未架電 / 完了 / 出ず / 留守電 / 折返待ち / 再連絡待ち / 担当不在 等）
 
@@ -117,7 +122,7 @@ export interface HearingRecord {
 
 // 互換性およびスクリプト用の定義
 export type LedStatus = 'all_led' | 'partial_led' | 'not_started';
-export type TimeSlot = 'any' | 'morning' | 'afternoon' | 'idle_time' | 'after_hours' | 'custom';
+export type TimeSlot = 'any' | 'morning' | 'afternoon' | 'idle_time' | 'after_hours' | 'custom' | string;
 export type KeyCustodyStatus = 'possible' | 'not_possible' | 'requires_staff' | 'not_applicable';
 
 export interface ScriptDialogue {

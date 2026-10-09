@@ -333,7 +333,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
       replacementRequest: '置き換え依頼 (Q)',
       itemOrdering: '商品手配 (R)',
       workAssignee: '作業担当 (S)',
-      scheduleNotice: '日程連絡 (T)',
+      scheduleNotice: '作業日程連絡 (T)',
       completion: '完了 (U)',
       callStatus: '電話状況 (V)',
       phoneStatus: '電話状況 (V)',
@@ -789,8 +789,8 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
                   N: 調査担当
                 </th>
-                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-32">
-                  O: 調査日
+                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-36">
+                  O: 調査実施予定日/確定日
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
                   P: 調査資料回収・結果
@@ -804,8 +804,8 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
                   S: 作業担当
                 </th>
-                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28">
-                  T: 日程連絡
+                <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-36">
+                  T: 作業日程連絡ステータス
                 </th>
                 <th className="py-2.5 px-3 bg-blue-50 font-bold text-blue-900 whitespace-nowrap w-28 text-center">
                   U: 完了
@@ -1207,21 +1207,21 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                         />
                       </td>
 
-                      {/* T: 日程連絡 */}
+                      {/* T: 作業日程連絡 */}
                       <td className={`py-1 px-2 ${isDone ? 'bg-slate-200/90 text-slate-700' : 'bg-white'}`}>
                         <select
-                          value={r.scheduleNotice}
+                          value={r.scheduleNotice === '連絡済' ? '作業日程確定' : r.scheduleNotice}
                           onChange={(e) => handleQuickChange(r.no, 'scheduleNotice', e.target.value)}
                           className={`w-full px-2 py-1 text-xs rounded border focus:outline-hidden font-medium ${
                             isDone
                               ? 'text-slate-800 bg-slate-200/90 border-slate-300 font-bold'
-                              : r.scheduleNotice === '連絡済'
+                              : r.scheduleNotice === '作業日程確定' || r.scheduleNotice === '連絡済'
                               ? 'text-emerald-700 bg-emerald-50 border-transparent hover:border-slate-300 focus:border-blue-500'
                               : 'text-amber-700 border-transparent hover:border-slate-300 focus:border-blue-500'
                           }`}
                         >
                           <option value="未連絡">未連絡</option>
-                          <option value="連絡済">連絡済</option>
+                          <option value="作業日程確定">作業日程確定</option>
                           <option value="日程調整中">日程調整中</option>
                         </select>
                       </td>
@@ -1388,7 +1388,7 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">O: 調査日</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">O: 調査実施予定日/確定日</label>
                   <input
                     type="date"
                     value={editFormData.surveyDate}
@@ -1487,14 +1487,14 @@ export const StoreLedgerTable: React.FC<StoreLedgerTableProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">T: 日程連絡</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">T: 作業日程連絡ステータス</label>
                   <select
-                    value={editFormData.scheduleNotice}
+                    value={editFormData.scheduleNotice === '連絡済' ? '作業日程確定' : editFormData.scheduleNotice}
                     onChange={(e) => setEditFormData({ ...editFormData, scheduleNotice: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden"
                   >
                     <option value="未連絡">未連絡</option>
-                    <option value="連絡済">連絡済</option>
+                    <option value="作業日程確定">作業日程確定</option>
                     <option value="日程調整中">日程調整中</option>
                   </select>
                 </div>
