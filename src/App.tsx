@@ -43,7 +43,9 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           return parsed.map((s) =>
-            s.storeMobile === '080-4601-3074' ? { ...s, storeMobile: '080-□□□□-〇〇〇〇' } : s
+            (s.storeName === '新津田沼' || s.no === 1) && s.storeMobile === '080-□□□□-〇〇〇〇'
+              ? { ...s, storeMobile: '080-4601-3074' }
+              : s
           );
         }
       }
@@ -81,9 +83,14 @@ export default function App() {
     // 1. Subscribe to Store Records (A〜T columns)
     const unsubStores = subscribeStoreRecords(
       (remoteStores) => {
-        const sanitized = remoteStores.map((s) =>
-          s.storeMobile === '080-4601-3074' ? { ...s, storeMobile: '080-□□□□-〇〇〇〇' } : s
-        );
+        const sanitized = remoteStores.map((s) => {
+          if ((s.storeName === '新津田沼' || s.no === 1) && s.storeMobile === '080-□□□□-〇〇〇〇') {
+            const fixed = { ...s, storeMobile: '080-4601-3074' };
+            updateStoreRecordInFirestore(fixed).catch(() => {});
+            return fixed;
+          }
+          return s;
+        });
         setStores(sanitized);
         setSyncStatus('connected');
         try {
