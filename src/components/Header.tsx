@@ -71,11 +71,11 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('checksheet')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'checksheet'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <ClipboardCheck className="w-4 h-4 text-blue-600" />
+            <ClipboardCheck className={`w-4 h-4 ${activeTab === 'checksheet' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>記録カルテ</span>
           </button>
 
@@ -83,11 +83,11 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('ledger')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'ledger'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <Table className="w-4 h-4 text-blue-600" />
+            <Table className={`w-4 h-4 ${activeTab === 'ledger' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>店舗調査進捗台帳</span>
           </button>
 
@@ -95,14 +95,18 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('simulator')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'simulator'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <PhoneCall className="w-4 h-4 text-blue-600" />
+            <PhoneCall className={`w-4 h-4 ${activeTab === 'simulator' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>通話ナビ（ヒアリング）</span>
             {selectedStoreName && (
-              <span className="text-[11px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold">
+              <span className={`text-[11px] px-1.5 py-0.5 rounded font-bold ${
+                activeTab === 'simulator'
+                  ? 'bg-pink-200 text-pink-900'
+                  : 'bg-slate-200 text-slate-800'
+              }`}>
                 {selectedStoreName}
               </span>
             )}
@@ -112,11 +116,11 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('post_visit')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'post_visit'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <FileCheck2 className="w-4 h-4 text-indigo-600" />
+            <FileCheck2 className={`w-4 h-4 ${activeTab === 'post_visit' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>通話ナビ2（訪問後）</span>
           </button>
 
@@ -124,11 +128,11 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('flowchart')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'flowchart'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <GitFork className="w-4 h-4 text-slate-500" />
+            <GitFork className={`w-4 h-4 ${activeTab === 'flowchart' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>分岐フロー図</span>
           </button>
 
@@ -136,11 +140,11 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('scripts')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'scripts'
-                ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200 shadow-2xs'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <BookOpen className="w-4 h-4 text-slate-500" />
+            <BookOpen className={`w-4 h-4 ${activeTab === 'scripts' ? 'text-pink-600' : 'text-slate-500'}`} />
             <span>トークスクリプト全文</span>
           </button>
         </nav>
