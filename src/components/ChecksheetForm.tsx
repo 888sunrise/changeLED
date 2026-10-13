@@ -25,12 +25,82 @@ import {
   Layers,
   BarChart3,
   X,
+  MapPin,
 } from 'lucide-react';
-import { HearingRecord } from '../types/hearing';
+import { HearingRecord, StoreRecord } from '../types/hearing';
 import { PrintSheetModal } from './PrintSheetModal';
+
+const PREFECTURE_REGEX = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
+
+export function extractPrefecture(text: string): string {
+  if (!text) return '';
+  const match = text.match(PREFECTURE_REGEX);
+  if (match) return match[1];
+
+  // 地名・店舗名からの推測補完（テストデータ等）
+  if (text.includes('渋谷') || text.includes('新宿') || text.includes('池袋') || text.includes('銀座') || text.includes('東京') || text.includes('八王子') || text.includes('町田')) return '東京都';
+  if (text.includes('幕張') || text.includes('津田沼') || text.includes('習志野') || text.includes('千葉') || text.includes('船橋') || text.includes('柏') || text.includes('市川') || text.includes('我孫子') || text.includes('木更津')) return '千葉県';
+  if (text.includes('相模原') || text.includes('横浜') || text.includes('川崎') || text.includes('神奈川')) return '神奈川県';
+  if (text.includes('さいたま') || text.includes('大宮') || text.includes('埼玉') || text.includes('川越')) return '埼玉県';
+  return '';
+}
+
+export interface RecordAddressInfo {
+  fullAddress: string;
+  prefecture: string;
+  shortAddress: string;
+}
+
+export function getRecordAddress(r: HearingRecord, stores?: StoreRecord[]): RecordAddressInfo {
+  let full = (r.storeAddress || '').trim();
+  let pref = (r.prefecture || '').trim();
+
+  if (stores && stores.length > 0) {
+    const matched = stores.find(
+      (s) =>
+        (r.storeId && s.storeCode && s.storeCode.trim().toLowerCase() === r.storeId.trim().toLowerCase()) ||
+        (r.storeName && s.storeName && s.storeName.trim() === r.storeName.trim()) ||
+        (r.storeName && s.storeName && (s.storeName.includes(r.storeName) || r.storeName.includes(s.storeName)))
+    );
+    if (matched) {
+      if (!full) {
+        full = `${matched.address1 || ''} ${matched.address2 || ''} ${matched.buildingName || ''}`.trim();
+      }
+      if (!pref) {
+        pref = extractPrefecture(matched.address1 || '');
+      }
+    }
+  }
+
+  if (!pref) {
+    pref = extractPrefecture(full) || extractPrefecture(r.storeName);
+  }
+  if (!full && pref) {
+    full = `${pref} ${r.storeName}`;
+  }
+
+  let short = '';
+  if (full) {
+    const cityMatch = full.match(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)([^市区町村]+[市区町村])/);
+    if (cityMatch) {
+      short = `${cityMatch[1]}${cityMatch[2]}`;
+    } else {
+      short = pref || full.slice(0, 10);
+    }
+  } else if (pref) {
+    short = pref;
+  }
+
+  return {
+    fullAddress: full,
+    prefecture: pref,
+    shortAddress: short,
+  };
+}
 
 interface ChecksheetFormProps {
   records: HearingRecord[];
+  stores?: StoreRecord[];
   onDeleteRecord: (id: string) => void;
   onEditRecord: (record: HearingRecord) => void;
   onStartNewHearing: () => void;
@@ -38,6 +108,7 @@ interface ChecksheetFormProps {
 
 export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   records,
+  stores,
   onDeleteRecord,
   onEditRecord,
   onStartNewHearing,
@@ -45,7 +116,44 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'not_required' | 'recontact'>('all');
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<HearingRecord | null>(null);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [recordsForPrint, setRecordsForPrint] = useState<HearingRecord[]>([]);
   const [recordToDelete, setRecordToDelete] = useState<HearingRecord | null>(null);
+
+  // Multi-selection handlers
+  const handleToggleSelect = (id: string) => {
+    setSelectedRecordIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllFiltered = () => {
+    const allFilteredIds = filteredRecords.map((r) => r.id);
+    const isAllSelected =
+      allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedRecordIds.includes(id));
+    if (isAllSelected) {
+      setSelectedRecordIds((prev) => prev.filter((id) => !allFilteredIds.includes(id)));
+    } else {
+      setSelectedRecordIds((prev) => Array.from(new Set([...prev, ...allFilteredIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRecordIds([]);
+  };
+
+  const handleOpenMultiPrint = (targetRecords?: HearingRecord[]) => {
+    if (targetRecords && targetRecords.length > 0) {
+      setRecordsForPrint(targetRecords);
+      return;
+    }
+    const selected = records.filter((r) => selectedRecordIds.includes(r.id));
+    if (selected.length > 0) {
+      setRecordsForPrint(selected);
+    } else if (filteredRecords.length > 0) {
+      setRecordsForPrint(filteredRecords);
+    }
+  };
 
   // Recontact record condition (only active recontacts, excluding completed ones)
   const isRecontactRecord = (r: HearingRecord) => {
@@ -89,14 +197,23 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
     }
 
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    const addressInfo = getRecordAddress(r, stores);
+
     return (
       r.storeName.toLowerCase().includes(q) ||
       (r.storeId && r.storeId.toLowerCase().includes(q)) ||
       r.contactPerson.toLowerCase().includes(q) ||
+      (r.contactRole && r.contactRole.toLowerCase().includes(q)) ||
+      (r.phoneNumber && r.phoneNumber.toLowerCase().includes(q)) ||
+      (r.operatorName && r.operatorName.toLowerCase().includes(q)) ||
       (r.notes && r.notes.toLowerCase().includes(q)) ||
       (r.callStatus && r.callStatus.toLowerCase().includes(q)) ||
-      (r.callbackScheduledAt && r.callbackScheduledAt.toLowerCase().includes(q))
+      (r.callbackScheduledAt && r.callbackScheduledAt.toLowerCase().includes(q)) ||
+      // 住所・都道府県検索（裏で検索）
+      (addressInfo.fullAddress && addressInfo.fullAddress.toLowerCase().includes(q)) ||
+      (addressInfo.prefecture && addressInfo.prefecture.toLowerCase().includes(q)) ||
+      (addressInfo.shortAddress && addressInfo.shortAddress.toLowerCase().includes(q))
     );
   });
 
@@ -126,6 +243,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       '受付日時',
       '店舗名',
       '店舗ID',
+      '都道府県',
+      '店舗住所',
       '対応者名',
       '役職',
       '電話番号',
@@ -144,28 +263,33 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       '特記事項',
     ];
 
-    const rows = filteredRecords.map((r) => [
-      `"${r.id}"`,
-      `"${r.timestamp}"`,
-      `"${r.storeName}"`,
-      `"${r.storeId || ''}"`,
-      `"${r.contactPerson}"`,
-      `"${r.contactRole || ''}"`,
-      `"${r.phoneNumber}"`,
-      `"${r.ledStatus === 'all_led' ? '全灯LED済' : r.ledStatus === 'partial_led' ? '一部未LED' : '未着手'}"`,
-      `"${r.partialAreas || ''}"`,
-      `"${r.locationCategory === 'builtin' ? 'ビルトイン' : r.locationCategory === 'foodcourt' ? 'フードコート' : r.locationCategory === 'freesta' ? 'ロードサイド' : '未特定'}"`,
-      `"${r.surveyRequirement === 'not_required' ? '不要(案件完了)' : '要訪問調査'}"`,
-      `"${r.visitPeriodStart && r.visitPeriodEnd ? `${r.visitPeriodStart}〜${r.visitPeriodEnd}` : r.preferredDate1 || ''}"`,
-      `"${r.preferredTimeSlot1 || ''}"`,
-      `"${r.preferredTimeSlot2 || ''}"`,
-      `"${r.workTiming || ''}"`,
-      `"${r.afterHoursTriggered ? '発動' : '未発動'}"`,
-      `"${r.keyCustody}"`,
-      `"${(r.lockProcedure || '').replace(/"/g, '""')}"`,
-      `"${r.operatorName}"`,
-      `"${(r.notes || '').replace(/"/g, '""')}"`,
-    ]);
+    const rows = filteredRecords.map((r) => {
+      const addr = getRecordAddress(r, stores);
+      return [
+        `"${r.id}"`,
+        `"${r.timestamp}"`,
+        `"${r.storeName}"`,
+        `"${r.storeId || ''}"`,
+        `"${addr.prefecture || ''}"`,
+        `"${(addr.fullAddress || '').replace(/"/g, '""')}"`,
+        `"${r.contactPerson}"`,
+        `"${r.contactRole || ''}"`,
+        `"${r.phoneNumber}"`,
+        `"${r.ledStatus === 'all_led' ? '全灯LED済' : r.ledStatus === 'partial_led' ? '一部未LED' : '未着手'}"`,
+        `"${r.partialAreas || ''}"`,
+        `"${r.locationCategory === 'builtin' ? 'ビルトイン' : r.locationCategory === 'foodcourt' ? 'フードコート' : r.locationCategory === 'freesta' ? 'ロードサイド' : '未特定'}"`,
+        `"${r.surveyRequirement === 'not_required' ? '不要(案件完了)' : '要訪問調査'}"`,
+        `"${r.visitPeriodStart && r.visitPeriodEnd ? `${r.visitPeriodStart}〜${r.visitPeriodEnd}` : r.preferredDate1 || ''}"`,
+        `"${r.preferredTimeSlot1 || ''}"`,
+        `"${r.preferredTimeSlot2 || ''}"`,
+        `"${r.workTiming || ''}"`,
+        `"${r.afterHoursTriggered ? '発動' : '未発動'}"`,
+        `"${r.keyCustody}"`,
+        `"${(r.lockProcedure || '').replace(/"/g, '""')}"`,
+        `"${r.operatorName}"`,
+        `"${(r.notes || '').replace(/"/g, '""')}"`,
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -500,13 +624,13 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        {/* Search & Bulk Action */}
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="店舗名・担当者で検索..."
+              placeholder="店舗名・担当者・県/住所（例: 東京都）で検索..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden transition-all"
@@ -527,8 +651,69 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
               {filteredRecords.length}件該当
             </span>
           )}
+
+          {/* Quick Bulk Print Button in Toolbar */}
+          <button
+            type="button"
+            onClick={() => handleOpenMultiPrint()}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+              selectedRecordIds.length > 0
+                ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+            }`}
+            title="選択したカルテを一括印刷（A4 1枚に2件掲載・例:6件なら3枚）"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>
+              {selectedRecordIds.length > 0
+                ? `選択印刷 (${selectedRecordIds.length}件 / ${Math.ceil(selectedRecordIds.length / 2)}枚)`
+                : `複数印刷 (${filteredRecords.length}件)`}
+            </span>
+          </button>
         </div>
       </div>
+
+      {/* Multi-Selection Banner */}
+      {selectedRecordIds.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-xl p-3 px-4 shadow-md flex flex-wrap items-center justify-between gap-3 border border-blue-800 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/30 text-blue-200 font-bold text-xs shrink-0">
+              ✓
+            </div>
+            <div>
+              <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                <span>{selectedRecordIds.length} 件選択中</span>
+                <span className="text-xs font-normal text-blue-200 bg-blue-800/80 px-2 py-0.5 rounded-full border border-blue-700">
+                  A4印刷: {Math.ceil(selectedRecordIds.length / 2)} 枚（1枚に2件）
+                </span>
+              </div>
+              <div className="text-[11px] text-blue-200 mt-0.5 hidden sm:block">
+                複数印刷時は1枚に2件ずつ掲載されます（例: 6件選択 → 印刷は3枚）。
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => handleOpenMultiPrint()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-blue-900 bg-white hover:bg-blue-50 rounded-lg shadow-sm transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+            >
+              <Printer className="w-3.5 h-3.5 text-blue-700" />
+              <FileText className="w-3.5 h-3.5 text-blue-700" />
+              <span>選択した{selectedRecordIds.length}件をまとめて印刷・PDF出力</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="px-3 py-2 text-xs text-blue-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+            >
+              選択解除
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Records Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
@@ -536,6 +721,26 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredRecords.length > 0 && filteredRecords.every((r) => selectedRecordIds.includes(r.id))}
+                    ref={(input) => {
+                      if (input) {
+                        const someSelected = filteredRecords.some((r) => selectedRecordIds.includes(r.id));
+                        const allSelected = filteredRecords.length > 0 && filteredRecords.every((r) => selectedRecordIds.includes(r.id));
+                        input.indeterminate = someSelected && !allSelected;
+                      }
+                    }}
+                    onChange={handleSelectAllFiltered}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer align-middle"
+                    title={
+                      filteredRecords.length > 0 && filteredRecords.every((r) => selectedRecordIds.includes(r.id))
+                        ? '全選択を解除'
+                        : '表示中のカルテをすべて選択'
+                    }
+                  />
+                </th>
                 <th className="py-3 px-4">受付日時</th>
                 <th className="py-3 px-4">対象店舗名 / ID</th>
                 <th className="py-3 px-4">対応者</th>
@@ -549,24 +754,55 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     条件に一致するヒアリング記録がありません。
                   </td>
                 </tr>
               ) : (
                 filteredRecords.map((r) => {
                   const isDone = r.surveyRequirement === 'not_required';
+                  const isSelected = selectedRecordIds.includes(r.id);
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={r.id}
+                      className={`transition-colors ${
+                        isSelected ? 'bg-blue-50/70 hover:bg-blue-100/60' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(r.id)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer align-middle"
+                          title="印刷対象として選択"
+                        />
+                      </td>
+
                       <td className="py-3 px-4 whitespace-nowrap">
                         {renderTimestamp(r.timestamp)}
                       </td>
 
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900">{r.storeName}</div>
-                        {r.storeId && (
-                          <div className="text-[11px] font-mono text-slate-400">{r.storeId}</div>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          {r.storeId && (
+                            <span className="text-[11px] font-mono text-slate-400">{r.storeId}</span>
+                          )}
+                          {(() => {
+                            const addr = getRecordAddress(r, stores);
+                            if (!addr.shortAddress) return null;
+                            return (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[10px] text-slate-600 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 transition-colors cursor-help"
+                                title={addr.fullAddress || addr.shortAddress}
+                              >
+                                <MapPin className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                <span>{addr.shortAddress}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">
@@ -715,9 +951,15 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setSelectedRecordForPrint(r)}
+                            onClick={() => {
+                              if (selectedRecordIds.length > 1 && selectedRecordIds.includes(r.id)) {
+                                handleOpenMultiPrint();
+                              } else {
+                                handleOpenMultiPrint([r]);
+                              }
+                            }}
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                            title="カルテ・帳票印刷"
+                            title="蛍光灯→LED切替 事前調査 電話ヒアリング結果シートを印刷・プレビュー"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -740,12 +982,17 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
         </div>
       </div>
 
-      {/* Printable Sheet View Modal */}
-      <PrintSheetModal
-        record={selectedRecordForPrint}
-        onClose={() => setSelectedRecordForPrint(null)}
-        onEditRecord={onEditRecord}
-      />
+      {/* Printable Sheet View Modal (Supports single record or multi-record 1枚2件) */}
+      {recordsForPrint.length > 0 && (
+        <PrintSheetModal
+          records={recordsForPrint}
+          record={recordsForPrint[0] || null}
+          allAvailableRecords={records}
+          stores={stores}
+          onClose={() => setRecordsForPrint([])}
+          onEditRecord={onEditRecord}
+        />
+      )}
 
       {/* Deletion Confirmation Modal */}
       {recordToDelete && (

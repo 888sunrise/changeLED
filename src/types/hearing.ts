@@ -88,6 +88,8 @@ export interface HearingRecord {
   operatorName: string;
   storeName: string;
   storeId?: string;
+  storeAddress?: string;            // 店舗住所（E〜G列 マスタ住所 / 検索・表示用）
+  prefecture?: string;              // 都道府県（東京都・千葉県等）
   contactPerson: string;
   contactRole?: string;
   phoneNumber: string;

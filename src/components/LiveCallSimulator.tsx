@@ -650,12 +650,26 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       ? `${baseTimestamp} (修正: ${nowTimeStr})`
       : new Date().toLocaleString('ja-JP');
 
+    const matchedStore = stores.find(
+      (s) =>
+        (storeId && s.storeCode === storeId) ||
+        s.storeName === storeName ||
+        (selectedStoreNo && s.no === selectedStoreNo)
+    );
+    const resolvedAddress = matchedStore
+      ? `${matchedStore.address1 || ''} ${matchedStore.address2 || ''} ${matchedStore.buildingName || ''}`.trim()
+      : undefined;
+    const prefMatch = (matchedStore?.address1 || '').match(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/);
+    const resolvedPrefecture = prefMatch ? prefMatch[1] : undefined;
+
     const record: HearingRecord = {
       id: targetId,
       timestamp: finalTimestamp,
       operatorName,
       storeName: storeName || '無題店舗',
       storeId,
+      storeAddress: resolvedAddress,
+      prefecture: resolvedPrefecture,
       contactPerson: contactPerson || '店長様',
       contactRole,
       phoneNumber,

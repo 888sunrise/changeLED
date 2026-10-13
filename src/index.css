@@ -94,6 +94,37 @@
     border-radius: 0 !important;
     font-size: 8pt !important;
     line-height: 1.25 !important;
+  }
+
+  /* Multi-page container: each page is an A4 sheet with break-after */
+  .print-page-block {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .print-page-block:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .print-half-sheet {
+    box-sizing: border-box !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }

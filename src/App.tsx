@@ -676,6 +676,7 @@ export default function App() {
         {activeTab === 'checksheet' && (
           <ChecksheetForm
             records={records}
+            stores={stores}
             onDeleteRecord={handleDeleteRecord}
             onEditRecord={handleEditRecord}
             onStartNewHearing={handleNewCall}
