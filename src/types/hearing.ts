@@ -145,3 +145,73 @@ export interface ScriptSection {
   dialogues: ScriptDialogue[];
   conditionNotice?: string;
 }
+
+/**
+ * 店舗情報（店番、店舗名、NO）から一意なヒアリングカルテIDを生成
+ * 重複ドキュメント生成を防ぐための正規化ID
+ */
+export function getHearingRecordId(storeId?: string, storeName?: string, storeNo?: number): string {
+  if (storeId && storeId.trim()) {
+    return `hearing-${storeId.trim().toLowerCase()}`;
+  }
+  if (storeNo !== undefined && storeNo !== null && storeNo > 0) {
+    return `hearing-no-${storeNo}`;
+  }
+  if (storeName && storeName.trim()) {
+    return `hearing-name-${encodeURIComponent(storeName.trim().toLowerCase())}`;
+  }
+  return `hearing-temp-${Date.now()}`;
+}
+
+/**
+ * 2つのレコードが同一店舗であるかを判定
+ */
+export function isSameStore(
+  a: { storeId?: string; storeName?: string; storeCode?: string; no?: number },
+  b: { storeId?: string; storeName?: string; storeCode?: string; no?: number }
+): boolean {
+  const codeA = (a.storeId || a.storeCode || '').trim().toLowerCase();
+  const codeB = (b.storeId || b.storeCode || '').trim().toLowerCase();
+  if (codeA && codeB && codeA === codeB) return true;
+
+  if (a.no && b.no && a.no === b.no) return true;
+
+  const nameA = (a.storeName || '').trim();
+  const nameB = (b.storeName || '').trim();
+  if (nameA && nameB && nameA !== '無題店舗' && nameA === nameB) return true;
+
+  return false;
+}
+
+/**
+ * 店舗情報またはマスタから一意な店舗キーを取得（重複排除用）
+ */
+export function getStoreKey(
+  record: { storeId?: string; storeName?: string; id?: string },
+  storesList?: StoreRecord[]
+): string {
+  const storeId = (record.storeId || '').trim().toLowerCase();
+  const storeName = (record.storeName || '').trim();
+
+  // 1. 店舗マスタ一覧が渡されている場合は、店番または店名からマスタ店舗を一意に特定
+  if (storesList && storesList.length > 0) {
+    const matched = storesList.find((s) => {
+      if (storeId && s.storeCode && s.storeCode.trim().toLowerCase() === storeId) return true;
+      if (storeName && s.storeName && s.storeName.trim() === storeName) return true;
+      return false;
+    });
+    if (matched) {
+      return `store:${(matched.storeCode || `no-${matched.no}`).trim().toLowerCase()}`;
+    }
+  }
+
+  // 2. マスタなしの場合のフォールバック
+  if (storeId) {
+    return `store:${storeId}`;
+  }
+  if (storeName && storeName !== '無題店舗') {
+    return `store:${storeName.toLowerCase()}`;
+  }
+  return `id:${record.id}`;
+}
+

@@ -31,7 +31,7 @@ import {
   AlertCircle,
   ArrowLeft,
 } from 'lucide-react';
-import { HearingRecord, LedStatus, SimulatorLocationCategory, TimeSlot, KeyCustodyStatus, StoreRecord } from '../types/hearing';
+import { HearingRecord, LedStatus, SimulatorLocationCategory, TimeSlot, KeyCustodyStatus, StoreRecord, getHearingRecordId } from '../types/hearing';
 
 export type CallStatusOption =
   | 'connected'        // つながり・ヒアリング承諾（STEP 2へ）
@@ -50,6 +50,7 @@ interface LiveCallSimulatorProps {
   editingRecord?: HearingRecord | null;
   onClearEditingRecord?: () => void;
   onUpdateStoreField?: (storeNo: number, field: keyof StoreRecord, value: any) => void;
+  onUpdateStoreFields?: (storeNo: number, fields: Partial<StoreRecord>) => void;
   onSelectStore?: (store: StoreRecord) => void;
   onBackToLedger?: () => void;
   onRequestTestClear?: (store: StoreRecord) => void;
@@ -64,6 +65,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
   editingRecord = null,
   onClearEditingRecord,
   onUpdateStoreField,
+  onUpdateStoreFields,
   onSelectStore,
   onBackToLedger,
   onRequestTestClear,
@@ -284,23 +286,32 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       fullNotes = `店長・設備責任者不在。理由: ${staffAwayReason} (架電: ${operatorName})`;
     }
 
-    // 1. Update master store in Firestore
-    if (selectedStoreNo && onUpdateStoreField) {
-      onUpdateStoreField(selectedStoreNo, 'callStatus', phoneStatusVal);
-      onUpdateStoreField(selectedStoreNo, 'phoneStatus', phoneStatusVal);
-      onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
-      if (callbackStaffName || contactPerson) {
-        onUpdateStoreField(selectedStoreNo, 'phoneContact', callbackStaffName || contactPerson);
-      }
+    const curStore = selectedStoreNo ? stores.find((s) => s.no === selectedStoreNo) : undefined;
 
-      const curStore = stores.find((s) => s.no === selectedStoreNo);
+    // 1. Update master store in Firestore atomically
+    if (selectedStoreNo) {
       const existingRemark = curStore?.remarks1 || '';
       const newRemark = existingRemark ? `${existingRemark} / ${remarkAddition}` : remarkAddition;
-      onUpdateStoreField(selectedStoreNo, 'remarks1', newRemark);
+      const updates: Partial<StoreRecord> = {
+        callStatus: phoneStatusVal,
+        phoneStatus: phoneStatusVal,
+        surveyAssignee: operatorName,
+        remarks1: newRemark,
+      };
+      if (callbackStaffName || contactPerson) {
+        updates.phoneContact = callbackStaffName || contactPerson;
+      }
+      if (onUpdateStoreFields) {
+        onUpdateStoreFields(selectedStoreNo, updates);
+      } else if (onUpdateStoreField) {
+        Object.entries(updates).forEach(([k, v]) => onUpdateStoreField(selectedStoreNo, k as keyof StoreRecord, v));
+      }
     }
 
     // 2. Save Hearing Record (Overwrites if existing record exists for same store)
-    const targetId = existingRecordForSelectedStore ? existingRecordForSelectedStore.id : `rec-${Date.now()}`;
+    const targetId = existingRecordForSelectedStore
+      ? existingRecordForSelectedStore.id
+      : getHearingRecordId(storeId || curStore?.storeCode, storeName || curStore?.storeName, selectedStoreNo || undefined);
     const baseTimestamp = existingRecordForSelectedStore ? existingRecordForSelectedStore.timestamp.split(' (')[0] : '';
     const finalTimestamp = existingRecordForSelectedStore
       ? `${baseTimestamp} (更新: ${nowDate} ${nowTime})`
@@ -312,7 +323,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       timestamp: finalTimestamp,
       operatorName,
       storeName: storeName || (selectedStoreNo ? `NO.${selectedStoreNo} 店舗` : '無題店舗'),
-      storeId,
+      storeId: storeId || curStore?.storeCode || '',
       contactPerson: callbackStaffName || contactPerson || '店舗担当者様',
       contactRole: chosenStatus === 'callback_waiting' ? 'スタッフ' : contactRole,
       phoneNumber,
@@ -451,8 +462,12 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       }
     } else {
       // Clean slate for brand new store
-      setLedStatus(null);
-      setPartialAreas('');
+      const isTargetStoreAllLed =
+        target.surveyDocCollection === '対象外' ||
+        Boolean(target.remarks1 && target.remarks1.includes('全灯LED'));
+
+      setLedStatus(isTargetStoreAllLed ? 'all_led' : null);
+      setPartialAreas(isTargetStoreAllLed ? 'なし（全箇所LED導入済）' : '');
       setVisitPeriodStart('');
       setVisitPeriodEnd('');
       setPreferredDate1('');
@@ -464,7 +479,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       setKeyCustody('possible');
       setLockProcedure('');
       setEmergencyContact('');
-      setNotes('');
+      setNotes(target.remarks1 || '');
       setCallOutcome('connected');
       setVoicemailNote('');
       setCallbackStaffName('');
@@ -636,6 +651,132 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     setTimeout(() => setCopiedSummary(false), 2000);
   };
 
+  const handleSelectLedStatus = (status: LedStatus) => {
+    setLedStatus(status);
+    if (status === 'all_led') {
+      setPartialAreas('なし（全箇所LED導入済）');
+
+      const matchedStore = stores.find(
+        (s) =>
+          (storeId && s.storeCode === storeId) ||
+          s.storeName === storeName ||
+          (selectedStoreNo && s.no === selectedStoreNo)
+      );
+
+      // Immediately sync to store ledger atomically
+      if (selectedStoreNo) {
+        const catJpn =
+          computedCategory === 'builtin'
+            ? 'ビルイン'
+            : computedCategory === 'foodcourt'
+            ? 'フードコート'
+            : computedCategory === 'freesta'
+            ? 'ロードサイド'
+            : '未設定';
+
+        const fieldsToUpdate: Partial<StoreRecord> = {
+          category: catJpn,
+          callStatus: '完了',
+          phoneStatus: '完了',
+          phoneContact: contactPerson || matchedStore?.phoneContact || '',
+          remarks1: '全灯LED済み（訪問調査不要）',
+          surveyDocCollection: '対象外',
+          replacementRequest: '対象外',
+          itemOrdering: '完了',
+          scheduleNotice: '連絡済',
+          completion: '完了',
+        };
+
+        if (onUpdateStoreFields) {
+          onUpdateStoreFields(selectedStoreNo, fieldsToUpdate);
+        } else if (onUpdateStoreField) {
+          Object.entries(fieldsToUpdate).forEach(([k, v]) => onUpdateStoreField(selectedStoreNo, k as keyof StoreRecord, v));
+        }
+      }
+
+      // Immediately sync to Hearing Record (記録カルテ)
+      const targetId = existingRecordForSelectedStore
+        ? existingRecordForSelectedStore.id
+        : getHearingRecordId(storeId || matchedStore?.storeCode, storeName || matchedStore?.storeName, selectedStoreNo || undefined);
+      const nowTimeStr = `${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+      const finalTimestamp = existingRecordForSelectedStore
+        ? `${existingRecordForSelectedStore.timestamp.split(' (')[0]} (更新: ${nowTimeStr})`
+        : new Date().toLocaleString('ja-JP');
+
+      const resolvedAddress = matchedStore
+        ? `${matchedStore.address1 || ''} ${matchedStore.address2 || ''} ${matchedStore.buildingName || ''}`.trim()
+        : undefined;
+      const prefMatch = (matchedStore?.address1 || '').match(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/);
+      const resolvedPrefecture = prefMatch ? prefMatch[1] : undefined;
+
+      const record: HearingRecord = {
+        id: targetId,
+        timestamp: finalTimestamp,
+        operatorName: operatorName || '自動連動',
+        storeName: storeName || matchedStore?.storeName || '無題店舗',
+        storeId: storeId || matchedStore?.storeCode,
+        storeAddress: resolvedAddress,
+        prefecture: resolvedPrefecture,
+        contactPerson: contactPerson || matchedStore?.phoneContact || '店長様',
+        contactRole,
+        phoneNumber: phoneNumber || matchedStore?.representativePhone || matchedStore?.storeMobile || '',
+        ledStatus: 'all_led',
+        partialAreas: 'なし（全箇所LED導入済）',
+        locationCategory: computedCategory,
+        locationDetails: {
+          isTenantInBuilding: isTenantInBuilding ?? false,
+          isCounterOnly: isCounterOnly ?? false,
+          hasDedicatedParkingLights: hasDedicatedParkingLights ?? false,
+        },
+        surveyRequirement: 'not_required',
+        workTiming,
+        afterHoursTriggered: false,
+        keyCustody: 'not_applicable',
+        lockProcedure: '',
+        emergencyContact: '',
+        notes: notes ? (notes.includes('全灯LED済') ? notes : `${notes}（全灯LED化確認・訪問調査不要）`) : '全灯LED化済み（訪問調査不要・案件完了）',
+        status: 'completed',
+        callStatus: '完了',
+        autoCompletedByDocScope: true,
+        callbackScheduledAt: '',
+        callbackNotes: '',
+      };
+
+      onSaveRecord(record);
+    } else {
+      // Switched to partial_led or not_started
+      if (selectedStoreNo) {
+        const fieldsToUpdate: Partial<StoreRecord> = {
+          callStatus: '通話中',
+          phoneStatus: '通話中',
+          phoneContact: contactPerson || '',
+          remarks1: status === 'partial_led' ? (partialAreas || '一部未LED(蛍光灯有)') : '未着手（全蛍光灯）',
+          surveyDocCollection: '未回収',
+          replacementRequest: '未依頼',
+          itemOrdering: '未手配',
+          completion: '未完了',
+        };
+        if (onUpdateStoreFields) {
+          onUpdateStoreFields(selectedStoreNo, fieldsToUpdate);
+        } else if (onUpdateStoreField) {
+          Object.entries(fieldsToUpdate).forEach(([k, v]) => onUpdateStoreField(selectedStoreNo, k as keyof StoreRecord, v));
+        }
+      }
+
+      if (existingRecordForSelectedStore) {
+        const record: HearingRecord = {
+          ...existingRecordForSelectedStore,
+          ledStatus: status,
+          surveyRequirement: 'required',
+          status: 'follow_up_needed',
+          callStatus: '完了',
+          autoCompletedByDocScope: false,
+        };
+        onSaveRecord(record);
+      }
+    }
+  };
+
   const handleSave = () => {
     if (!operatorName) {
       setOperatorError(true);
@@ -643,19 +784,22 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
     }
     setOperatorError(false);
 
-    const targetId = existingRecordForSelectedStore ? existingRecordForSelectedStore.id : `rec-${Date.now()}`;
-    const baseTimestamp = existingRecordForSelectedStore ? existingRecordForSelectedStore.timestamp.split(' (')[0] : '';
-    const nowTimeStr = `${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
-    const finalTimestamp = existingRecordForSelectedStore
-      ? `${baseTimestamp} (修正: ${nowTimeStr})`
-      : new Date().toLocaleString('ja-JP');
-
     const matchedStore = stores.find(
       (s) =>
         (storeId && s.storeCode === storeId) ||
         s.storeName === storeName ||
         (selectedStoreNo && s.no === selectedStoreNo)
     );
+
+    const targetId = existingRecordForSelectedStore
+      ? existingRecordForSelectedStore.id
+      : getHearingRecordId(storeId || matchedStore?.storeCode, storeName || matchedStore?.storeName, selectedStoreNo || undefined);
+    const baseTimestamp = existingRecordForSelectedStore ? existingRecordForSelectedStore.timestamp.split(' (')[0] : '';
+    const nowTimeStr = `${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+    const finalTimestamp = existingRecordForSelectedStore
+      ? `${baseTimestamp} (修正: ${nowTimeStr})`
+      : new Date().toLocaleString('ja-JP');
+
     const resolvedAddress = matchedStore
       ? `${matchedStore.address1 || ''} ${matchedStore.address2 || ''} ${matchedStore.buildingName || ''}`.trim()
       : undefined;
@@ -667,21 +811,21 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       timestamp: finalTimestamp,
       operatorName,
       storeName: storeName || '無題店舗',
-      storeId,
+      storeId: storeId || matchedStore?.storeCode || '',
       storeAddress: resolvedAddress,
       prefecture: resolvedPrefecture,
       contactPerson: contactPerson || '店長様',
       contactRole,
       phoneNumber,
       ledStatus: ledStatus || 'not_started',
-      partialAreas,
+      partialAreas: ledStatus === 'all_led' ? 'なし（全箇所LED導入済）' : partialAreas,
       locationCategory: computedCategory,
       locationDetails: {
         isTenantInBuilding: isTenantInBuilding ?? false,
         isCounterOnly: isCounterOnly ?? false,
         hasDedicatedParkingLights: hasDedicatedParkingLights ?? false,
       },
-      surveyRequirement: surveyRequirement === 'not_required' ? 'not_required' : 'required',
+      surveyRequirement: ledStatus === 'all_led' ? 'not_required' : surveyRequirement === 'not_required' ? 'not_required' : 'required',
       visitPeriodStart: visitPeriodStart || preferredDate1,
       visitPeriodEnd: visitPeriodEnd || preferredDate2,
       preferredDate1: visitPeriodStart || preferredDate1,
@@ -696,14 +840,15 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
       notes: notes + (dayPreferenceNotes ? ` [時間帯・曜日要望: ${dayPreferenceNotes}]` : ''),
       status: 'completed',
       callStatus: '完了',
+      autoCompletedByDocScope: ledStatus === 'all_led',
       callbackScheduledAt: '',
       callbackNotes: '',
     };
 
     onSaveRecord(record);
 
-    // If associated with a master store record, update its fields
-    if (selectedStoreNo && onUpdateStoreField) {
+    // If associated with a master store record, update its fields atomically
+    if (selectedStoreNo) {
       const catJpn =
         computedCategory === 'builtin'
           ? 'ビルイン'
@@ -713,29 +858,40 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
           ? 'ロードサイド'
           : '未設定';
 
-      onUpdateStoreField(selectedStoreNo, 'category', catJpn);
-      onUpdateStoreField(selectedStoreNo, 'callStatus', '完了');
-      onUpdateStoreField(selectedStoreNo, 'phoneStatus', '完了');
-      onUpdateStoreField(selectedStoreNo, 'phoneContact', contactPerson || '');
+      const fieldsToUpdate: Partial<StoreRecord> = {
+        category: catJpn,
+        callStatus: '完了',
+        phoneStatus: '完了',
+        phoneContact: contactPerson || '',
+      };
+
       if (ledStatus === 'all_led') {
-        onUpdateStoreField(selectedStoreNo, 'remarks1', '全灯LED済み（訪問調査不要）');
-        onUpdateStoreField(selectedStoreNo, 'surveyDocCollection', '対象外');
-        onUpdateStoreField(selectedStoreNo, 'replacementRequest', '対象外');
-        onUpdateStoreField(selectedStoreNo, 'itemOrdering', '完了');
-        onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
-        onUpdateStoreField(selectedStoreNo, 'completion', '完了');
+        fieldsToUpdate.remarks1 = '全灯LED済み（訪問調査不要）';
+        fieldsToUpdate.surveyDocCollection = '対象外';
+        fieldsToUpdate.replacementRequest = '対象外';
+        fieldsToUpdate.itemOrdering = '完了';
+        fieldsToUpdate.scheduleNotice = '連絡済';
+        fieldsToUpdate.completion = '完了';
       } else {
-        onUpdateStoreField(selectedStoreNo, 'remarks1', partialAreas || '一部未LED(蛍光灯有)');
+        fieldsToUpdate.remarks1 = partialAreas || '一部未LED(蛍光灯有)';
         const surveyPeriodStr =
           visitPeriodStart && visitPeriodEnd
             ? `${visitPeriodStart}〜${visitPeriodEnd}`
             : visitPeriodStart || preferredDate1 || '';
         if (surveyPeriodStr) {
-          onUpdateStoreField(selectedStoreNo, 'surveyDate', surveyPeriodStr);
+          fieldsToUpdate.surveyDate = surveyPeriodStr;
         }
-        onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
-        onUpdateStoreField(selectedStoreNo, 'scheduleNotice', '連絡済');
-        onUpdateStoreField(selectedStoreNo, 'completion', '未完了');
+        fieldsToUpdate.surveyAssignee = operatorName;
+        fieldsToUpdate.scheduleNotice = '連絡済';
+        fieldsToUpdate.completion = '未完了';
+      }
+
+      if (onUpdateStoreFields) {
+        onUpdateStoreFields(selectedStoreNo, fieldsToUpdate);
+      } else if (onUpdateStoreField) {
+        Object.entries(fieldsToUpdate).forEach(([k, v]) => {
+          onUpdateStoreField(selectedStoreNo, k as keyof StoreRecord, v);
+        });
       }
     }
 
@@ -1347,11 +1503,18 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     <div className="flex justify-end pt-2">
                       <button
                         onClick={() => {
-                          if (selectedStoreNo && onUpdateStoreField) {
-                            onUpdateStoreField(selectedStoreNo, 'callStatus', '通話中');
-                            onUpdateStoreField(selectedStoreNo, 'phoneStatus', '通話中');
-                            onUpdateStoreField(selectedStoreNo, 'surveyAssignee', operatorName);
-                            onUpdateStoreField(selectedStoreNo, 'phoneContact', contactPerson || '');
+                          if (selectedStoreNo) {
+                            const updates: Partial<StoreRecord> = {
+                              callStatus: '通話中',
+                              phoneStatus: '通話中',
+                              surveyAssignee: operatorName,
+                              phoneContact: contactPerson || '',
+                            };
+                            if (onUpdateStoreFields) {
+                              onUpdateStoreFields(selectedStoreNo, updates);
+                            } else if (onUpdateStoreField) {
+                              Object.entries(updates).forEach(([k, v]) => onUpdateStoreField(selectedStoreNo, k as keyof StoreRecord, v));
+                            }
                           }
                           setCurrentStep(2);
                         }}
@@ -1757,7 +1920,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {/* Option A: All LED */}
                   <div
-                    onClick={() => setLedStatus('all_led')}
+                    onClick={() => handleSelectLedStatus('all_led')}
                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
                       ledStatus === 'all_led'
                         ? 'border-emerald-500 bg-emerald-50 shadow-sm'
@@ -1786,7 +1949,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
                   {/* Option B: Partial LED */}
                   <div
-                    onClick={() => setLedStatus('partial_led')}
+                    onClick={() => handleSelectLedStatus('partial_led')}
                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
                       ledStatus === 'partial_led'
                         ? 'border-blue-500 bg-blue-50 shadow-sm'
@@ -1815,7 +1978,7 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
 
                   {/* Option C: Not Started */}
                   <div
-                    onClick={() => setLedStatus('not_started')}
+                    onClick={() => handleSelectLedStatus('not_started')}
                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
                       ledStatus === 'not_started'
                         ? 'border-blue-500 bg-blue-50 shadow-sm'
@@ -1857,7 +2020,11 @@ export const LiveCallSimulator: React.FC<LiveCallSimulatorProps> = ({
                     全灯LED化が完了しておりますので、今回の現地での訪問調査は省略させていただきます。<br />
                     本日の確認結果は本部へ報告し、手続きを完了といたします。お忙しい中ご協力いただき、心より感謝申し上げます。失礼いたします。」
                   </div>
-                  <div className="flex justify-end gap-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <span className="text-xs text-emerald-800 font-bold flex items-center gap-1.5 bg-white/90 border border-emerald-300 px-3 py-1.5 rounded-lg shadow-2xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>記録カルテ（全灯LED済・調査不要）および台帳（完了）に即時連動しました</span>
+                    </span>
                     <button
                       onClick={() => setCurrentStep(6)}
                       className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-xs"

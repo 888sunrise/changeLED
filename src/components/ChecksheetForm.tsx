@@ -27,7 +27,7 @@ import {
   X,
   MapPin,
 } from 'lucide-react';
-import { HearingRecord, StoreRecord } from '../types/hearing';
+import { HearingRecord, StoreRecord, getStoreKey } from '../types/hearing';
 import { PrintSheetModal } from './PrintSheetModal';
 
 const PREFECTURE_REGEX = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
@@ -172,11 +172,33 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
     );
   };
 
+  // Defensive deduplication of records by store (never display duplicates in UI)
+  const displayRecords = React.useMemo(() => {
+    const seen = new Set<string>();
+    const res: HearingRecord[] = [];
+    // Sort so completed / all_led records take precedence, then newest timestamp
+    const sorted = [...records].sort((a, b) => {
+      const aComp = (a.status === 'completed' || a.ledStatus === 'all_led') ? 1 : 0;
+      const bComp = (b.status === 'completed' || b.ledStatus === 'all_led') ? 1 : 0;
+      if (aComp !== bComp) return bComp - aComp;
+      return (b.timestamp || '').localeCompare(a.timestamp || '');
+    });
+
+    for (const r of sorted) {
+      const key = getStoreKey(r, stores);
+      if (!seen.has(key)) {
+        seen.add(key);
+        res.push(r);
+      }
+    }
+    return res;
+  }, [records, stores]);
+
   // Dashboard Metrics Calculation
-  const totalCount = records.length;
-  const requiredCount = records.filter((r) => r.surveyRequirement === 'required').length;
-  const recontactCount = records.filter(isRecontactRecord).length;
-  const notRequiredCount = records.filter((r) => r.surveyRequirement === 'not_required').length;
+  const totalCount = displayRecords.length;
+  const requiredCount = displayRecords.filter((r) => r.surveyRequirement === 'required').length;
+  const recontactCount = displayRecords.filter(isRecontactRecord).length;
+  const notRequiredCount = displayRecords.filter((r) => r.surveyRequirement === 'not_required').length;
 
   const requiredPct = totalCount > 0 ? ((requiredCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
   const recontactPct = totalCount > 0 ? ((recontactCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
@@ -187,7 +209,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   const notRequiredNum = totalCount > 0 ? (notRequiredCount / totalCount) * 100 : 0;
 
   // Filtered list
-  const filteredRecords = records.filter((r) => {
+  const filteredRecords = displayRecords.filter((r) => {
     if (filterRequirement === 'required') {
       if (r.surveyRequirement !== 'required') return false;
     } else if (filterRequirement === 'not_required') {
@@ -762,11 +784,16 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                 filteredRecords.map((r) => {
                   const isDone = r.surveyRequirement === 'not_required';
                   const isSelected = selectedRecordIds.includes(r.id);
+                  const isAllLed = r.ledStatus === 'all_led' || r.surveyRequirement === 'not_required';
                   return (
                     <tr
                       key={r.id}
-                      className={`transition-colors ${
-                        isSelected ? 'bg-blue-50/70 hover:bg-blue-100/60' : 'hover:bg-slate-50/80'
+                      className={`transition-colors divide-x divide-slate-200/60 ${
+                        isSelected
+                          ? 'bg-blue-50/70 hover:bg-blue-100/60'
+                          : isAllLed
+                          ? 'bg-slate-200/90 text-slate-700 hover:bg-slate-200'
+                          : 'bg-white hover:bg-slate-50/80'
                       }`}
                     >
                       <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
@@ -784,17 +811,26 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{r.storeName}</div>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className={`font-bold ${isAllLed ? 'text-slate-800' : 'text-slate-900'}`}>{r.storeName}</div>
+                          {isAllLed && (
+                            <span className="text-[10px] bg-slate-400/40 text-slate-800 px-1 py-0.5 rounded font-bold whitespace-nowrap">
+                              完了
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                           {r.storeId && (
-                            <span className="text-[11px] font-mono text-slate-400">{r.storeId}</span>
+                            <span className={`text-[11px] font-mono ${isAllLed ? 'text-slate-500 font-semibold' : 'text-slate-400'}`}>{r.storeId}</span>
                           )}
                           {(() => {
                             const addr = getRecordAddress(r, stores);
                             if (!addr.shortAddress) return null;
                             return (
                               <span
-                                className="inline-flex items-center gap-0.5 text-[10px] text-slate-600 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 transition-colors cursor-help"
+                                className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border transition-colors cursor-help ${
+                                  isAllLed ? 'text-slate-700 bg-slate-300/60 border-slate-300' : 'text-slate-600 bg-slate-100 hover:bg-slate-200 border-slate-200'
+                                }`}
                                 title={addr.fullAddress || addr.shortAddress}
                               >
                                 <MapPin className="w-2.5 h-2.5 text-slate-400 shrink-0" />
@@ -806,19 +842,19 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="font-medium text-slate-800">{r.contactPerson} 様</div>
-                        <div className="text-[11px] text-slate-400">{r.contactRole || '店長'}</div>
+                        <div className={`font-medium ${isAllLed ? 'text-slate-800' : 'text-slate-800'}`}>{r.contactPerson} 様</div>
+                        <div className={`text-[11px] ${isAllLed ? 'text-slate-500' : 'text-slate-400'}`}>{r.contactRole || '店長'}</div>
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         {r.ledStatus === 'all_led' ? (
                           <div className="space-y-0.5">
-                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300/60">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
                               <span>全灯LED済</span>
                             </span>
                             {(r.autoCompletedByDocScope || (r.notes && r.notes.includes('P列'))) && (
-                              <span className="text-[10px] text-emerald-600 block font-normal">
+                              <span className="text-[10px] text-slate-600 block font-normal">
                                 (P列:対象外連動)
                               </span>
                             )}
@@ -858,14 +894,14 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
-                        {r.surveyRequirement === 'not_required' ? (
+                        {r.surveyRequirement === 'not_required' || r.ledStatus === 'all_led' ? (
                           <div className="space-y-0.5">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-300 text-slate-800 border border-slate-400/50">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-slate-700" />
                               <span>調査不要・案件終了</span>
                             </span>
                             {(r.autoCompletedByDocScope || (r.notes && r.notes.includes('P列'))) && (
-                              <span className="text-[10px] text-slate-500 block">
+                              <span className="text-[10px] text-slate-600 block">
                                 P列結果連動
                               </span>
                             )}
@@ -903,8 +939,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                           <div className="font-semibold text-cyan-800 bg-cyan-50 px-2.5 py-1 rounded border border-cyan-200 inline-block">
                             <span>📅 再連絡予約: {r.callbackScheduledAt}</span>
                           </div>
-                        ) : r.surveyRequirement === 'not_required' ? (
-                          <span className="text-slate-400">訪問なし（案件終了）</span>
+                        ) : r.surveyRequirement === 'not_required' || r.ledStatus === 'all_led' ? (
+                          <span className="text-slate-600 font-medium">訪問なし（案件終了）</span>
                         ) : (
                           <div>
                             <div className="font-semibold text-slate-800">
