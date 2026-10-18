@@ -101,7 +101,7 @@ export interface HearingRecord {
     isCounterOnly: boolean;
     hasDedicatedParkingLights: boolean;
   };
-  surveyRequirement: 'not_required' | 'required' | 'pending';
+  surveyRequirement: 'not_required' | 'required' | 'pending' | 'completed';
   visitPeriodStart?: string;        // 訪問予定期間（開始日：何日から）
   visitPeriodEnd?: string;          // 訪問予定期間（終了日：何日まで）
   preferredDate1?: string;          // 互換性保持（期間開始日）

@@ -42,11 +42,29 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.map((s) =>
-            (s.storeName === '新津田沼' || s.no === 1) && s.storeMobile !== '080-4601-3074'
-              ? { ...s, storeMobile: '080-4601-3074' }
-              : s
-          );
+          return parsed.map((s) => {
+            let updated = s;
+            if ((updated.storeName === '新津田沼' || updated.no === 1) && updated.storeMobile !== '080-4601-3074') {
+              updated = { ...updated, storeMobile: '080-4601-3074' };
+            }
+            if (
+              (updated.storeCode === '120031' || updated.storeCode === '120042') &&
+              (!updated.surveyDate || updated.surveyDocCollection === '未回収')
+            ) {
+              updated = {
+                ...updated,
+                phoneStatus: '完了',
+                surveyDate: updated.surveyDate || '2026-10-16',
+                surveyConfirmed: true,
+                surveyConfirmedDate: updated.surveyConfirmedDate || '2026-10-16',
+                surveyConfirmedTime: updated.surveyConfirmedTime || (updated.storeCode === '120031' ? '14:00' : '11:00'),
+                surveyAssignee: updated.surveyAssignee || '栗木',
+                surveyDocCollection: '回収済',
+                surveyDocDate: updated.surveyDocDate || '2026-10-16',
+              };
+            }
+            return updated;
+          });
         }
       }
     } catch {}
@@ -84,12 +102,29 @@ export default function App() {
     const unsubStores = subscribeStoreRecords(
       (remoteStores) => {
         const sanitized = remoteStores.map((s) => {
-          if ((s.storeName === '新津田沼' || s.no === 1) && s.storeMobile !== '080-4601-3074') {
-            const fixed = { ...s, storeMobile: '080-4601-3074' };
+          let fixed = s;
+          if ((fixed.storeName === '新津田沼' || fixed.no === 1) && fixed.storeMobile !== '080-4601-3074') {
+            fixed = { ...fixed, storeMobile: '080-4601-3074' };
             updateStoreRecordInFirestore(fixed).catch(() => {});
-            return fixed;
           }
-          return s;
+          if (
+            (fixed.storeCode === '120031' || fixed.storeCode === '120042') &&
+            (!fixed.surveyDate || fixed.surveyDocCollection === '未回収')
+          ) {
+            fixed = {
+              ...fixed,
+              phoneStatus: '完了',
+              surveyDate: fixed.surveyDate || '2026-10-16',
+              surveyConfirmed: true,
+              surveyConfirmedDate: fixed.surveyConfirmedDate || '2026-10-16',
+              surveyConfirmedTime: fixed.surveyConfirmedTime || (fixed.storeCode === '120031' ? '14:00' : '11:00'),
+              surveyAssignee: fixed.surveyAssignee || '栗木',
+              surveyDocCollection: '回収済',
+              surveyDocDate: fixed.surveyDocDate || '2026-10-16',
+            };
+            updateStoreRecordInFirestore(fixed).catch(() => {});
+          }
+          return fixed;
         });
         setStores(sanitized);
         setSyncStatus('connected');
@@ -155,20 +190,23 @@ export default function App() {
     };
   }, []);
 
-  // 連動同期: 台帳側で「対象外」または「全灯LED」の店舗は、記録カルテのLED化状況を「全灯LED済」、訪問調査要否を「not_required (案件終了・調査不要)」に自動同期
+  // 連動同期: 台帳側で「回収済」「対象外」または「全灯LED」の店舗は、記録カルテの訪問調査判定・LED化状況を自動同期
   useEffect(() => {
     if (stores.length === 0) return;
-    const allLedStores = stores.filter(
-      (s) =>
-        s.surveyDocCollection === '対象外' ||
-        (Boolean(s.remarks1) && s.remarks1.includes('全灯LED'))
-    );
-    if (allLedStores.length === 0) return;
 
     let hasChanges = false;
     let nextList = [...records];
 
-    allLedStores.forEach((s) => {
+    stores.forEach((s) => {
+      const isOutOfScope =
+        s.surveyDocCollection === '対象外' ||
+        (Boolean(s.remarks1) && s.remarks1.includes('全灯LED'));
+      const isDocCollected =
+        !isOutOfScope &&
+        (s.surveyDocCollection === '回収済' || Boolean(s.surveyDocDate));
+
+      if (!isOutOfScope && !isDocCollected) return;
+
       const matchIdx = nextList.findIndex((r) =>
         isSameStore({ storeCode: s.storeCode, storeName: s.storeName, no: s.no }, r) ||
         getStoreKey(r, stores) === getStoreKey({ storeId: s.storeCode, storeName: s.storeName }, stores)
@@ -176,20 +214,39 @@ export default function App() {
 
       if (matchIdx >= 0) {
         const r = nextList[matchIdx];
-        if (r.ledStatus !== 'all_led' || r.surveyRequirement !== 'not_required') {
-          hasChanges = true;
-          const updated: HearingRecord = {
-            ...r,
-            storeId: s.storeCode || r.storeId,
-            storeName: s.storeName || r.storeName,
-            ledStatus: 'all_led',
-            surveyRequirement: 'not_required',
-            status: 'completed',
-            callStatus: '完了',
-            autoCompletedByDocScope: true,
-          };
-          nextList[matchIdx] = updated;
-          saveHearingRecordToFirestore(updated).catch(() => {});
+        if (isOutOfScope) {
+          if (r.ledStatus !== 'all_led' || r.surveyRequirement !== 'not_required') {
+            hasChanges = true;
+            const updated: HearingRecord = {
+              ...r,
+              storeId: s.storeCode || r.storeId,
+              storeName: s.storeName || r.storeName,
+              ledStatus: 'all_led',
+              surveyRequirement: 'not_required',
+              status: 'completed',
+              callStatus: '完了',
+              autoCompletedByDocScope: true,
+            };
+            nextList[matchIdx] = updated;
+            saveHearingRecordToFirestore(updated).catch(() => {});
+          }
+        } else if (isDocCollected) {
+          if (r.surveyRequirement !== 'completed') {
+            hasChanges = true;
+            const updated: HearingRecord = {
+              ...r,
+              storeId: s.storeCode || r.storeId,
+              storeName: s.storeName || r.storeName,
+              surveyRequirement: 'completed',
+              status: 'completed',
+              callStatus: '完了',
+              notes: r.notes
+                ? (r.notes.includes('現地調査完了') ? r.notes : `${r.notes}（現地調査完了・資料回収済）`)
+                : '現地調査完了・資料回収済',
+            };
+            nextList[matchIdx] = updated;
+            saveHearingRecordToFirestore(updated).catch(() => {});
+          }
         }
       } else {
         const canonicalId = getHearingRecordId(s.storeCode, s.storeName, s.no);
@@ -215,8 +272,8 @@ export default function App() {
             storeId: s.storeCode,
             contactPerson: s.phoneContact || 'ご担当者様',
             phoneNumber: s.representativePhone || s.storeMobile || '',
-            ledStatus: 'all_led',
-            surveyRequirement: 'not_required',
+            ledStatus: isOutOfScope ? 'all_led' : 'partial_led',
+            surveyRequirement: isOutOfScope ? 'not_required' : 'completed',
             locationCategory:
               s.category === 'ビルイン'
                 ? 'builtin'
@@ -227,8 +284,8 @@ export default function App() {
                 : 'unspecified',
             status: 'completed',
             callStatus: '完了',
-            autoCompletedByDocScope: true,
-            notes: '全灯LED済・案件終了に自動同期',
+            autoCompletedByDocScope: isOutOfScope,
+            notes: isOutOfScope ? '全灯LED済・案件終了に自動同期' : '現地調査完了・資料回収済に自動同期',
             afterHoursTriggered: false,
             keyCustody: 'not_applicable',
           };
@@ -347,14 +404,63 @@ export default function App() {
           };
           nextList = [recordToPersist, ...nextList];
         }
+      } else if (normalized.surveyDocCollection === '回収済' || Boolean(normalized.surveyDocDate)) {
+        if (existingIdx >= 0) {
+          const existing = prev[existingIdx];
+          recordToPersist = {
+            ...existing,
+            storeId: normalized.storeCode || existing.storeId,
+            storeName: normalized.storeName || existing.storeName,
+            surveyRequirement: 'completed',
+            status: 'completed',
+            callStatus: '完了',
+            notes: existing.notes
+              ? (existing.notes.includes('現地調査完了') ? existing.notes : `${existing.notes}（現地調査完了・資料回収済）`)
+              : '現地調査完了・資料回収済',
+          };
+          nextList[existingIdx] = recordToPersist;
+        } else {
+          recordToPersist = {
+            id: getHearingRecordId(normalized.storeCode, normalized.storeName, normalized.no),
+            timestamp: new Date().toLocaleString('ja-JP', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            operatorName: normalized.surveyAssignee || '自動連動',
+            storeName: normalized.storeName,
+            storeId: normalized.storeCode,
+            contactPerson: normalized.phoneContact || 'ご担当者様',
+            phoneNumber: normalized.representativePhone || normalized.storeMobile || '',
+            ledStatus: 'partial_led',
+            surveyRequirement: 'completed',
+            locationCategory:
+              normalized.category === 'ビルイン'
+                ? 'builtin'
+                : normalized.category === 'フードコート'
+                ? 'foodcourt'
+                : normalized.category === 'ロードサイド'
+                ? 'freesta'
+                : 'unspecified',
+            status: 'completed',
+            callStatus: '完了',
+            autoCompletedByDocScope: false,
+            notes: '現地調査完了・資料回収済',
+            afterHoursTriggered: false,
+            keyCustody: 'not_applicable',
+          };
+          nextList = [recordToPersist, ...nextList];
+        }
       } else if (
         existingIdx >= 0 &&
-        prev[existingIdx].autoCompletedByDocScope &&
-        normalized.surveyDocCollection !== '対象外' &&
+        (prev[existingIdx].autoCompletedByDocScope || prev[existingIdx].surveyRequirement === 'completed') &&
+        normalized.surveyDocCollection === '未回収' &&
         normalized.completion !== '完了' &&
         !normalized.remarks1?.includes('全灯LED')
       ) {
-        // もし以前に全灯LED・P列「対象外」で自動連動完了された店舗が手動で「未回収」かつ「未完了」に戻された場合のみ復元
+        // もし以前に全灯LED・P列「対象外」や「回収済」で連動完了された店舗が手動で「未回収」かつ「未完了」に戻された場合のみ復元
         const existing = prev[existingIdx];
         recordToPersist = {
           ...existing,

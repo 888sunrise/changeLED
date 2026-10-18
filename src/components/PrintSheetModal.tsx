@@ -175,12 +175,16 @@ const HearingSheetCard: React.FC<HearingSheetCardProps> = ({
           <div
             className={`p-1 rounded border flex items-center justify-between ${
               record.surveyRequirement === 'not_required'
+                ? 'bg-slate-100 border-slate-300 text-slate-800'
+                : record.surveyRequirement === 'completed'
                 ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
                 : 'bg-blue-50 border-blue-300 text-blue-950'
             }`}
           >
             <div className="flex items-center gap-1.5">
               {record.surveyRequirement === 'not_required' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              ) : record.surveyRequirement === 'completed' ? (
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               ) : (
                 <AlertTriangle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -189,12 +193,16 @@ const HearingSheetCard: React.FC<HearingSheetCardProps> = ({
                 判定結果：
                 {record.surveyRequirement === 'not_required'
                   ? '【訪問調査 不要（案件終了）】'
+                  : record.surveyRequirement === 'completed'
+                  ? '【現地調査 完了（資料回収済）】'
                   : '【訪問調査 必要（技術員派遣）】'}
               </span>
             </div>
             <span className="text-slate-600 font-semibold text-[9.5px] print:text-[6.5pt]">
               {record.surveyRequirement === 'not_required'
                 ? '※全灯LED確認済・調査免除'
+                : record.surveyRequirement === 'completed'
+                ? '※現地調査完了・P列資料回収済'
                 : '※器具規格・本数現地調査'}
             </span>
           </div>

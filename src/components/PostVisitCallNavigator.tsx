@@ -501,6 +501,9 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
     // If surveyDocCollection is '回収済' and surveyDocDate empty, default today
     if (field === 'surveyDocCollection' && value === '回収済' && !updated.surveyDocDate) {
       updated.surveyDocDate = getTodayString();
+      showToast(`「${store.storeName}」のP列を「回収済」に設定：記録カルテの訪問調査判定「調査完了」に自動連動しました`);
+    } else if (field === 'surveyDocCollection' && value === '回収済') {
+      showToast(`「${store.storeName}」のP列を「回収済」に設定：記録カルテの訪問調査判定「調査完了」に自動連動しました`);
     }
     // If replacementRequest is '依頼済' and date empty, default today
     if (field === 'replacementRequest' && value === '依頼済' && !updated.replacementRequestDate) {
@@ -1717,6 +1720,11 @@ export const PostVisitCallNavigator: React.FC<PostVisitCallNavigatorProps> = ({
                           <option value="回収済">回収済（書類確認完了）</option>
                           <option value="対象外">対象外（全行程完了）</option>
                         </select>
+                        {selectedStore.surveyDocCollection === '回収済' && (
+                          <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mt-1.5 leading-snug">
+                            ★ P列「回収済」連動中：事前調査完了のため、記録カルテの訪問調査判定が「調査完了」に自動連動しています。
+                          </p>
+                        )}
                         {selectedStore.surveyDocCollection === '対象外' && (
                           <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mt-1.5 leading-snug">
                             ★ P列「対象外」連動中：工事等の作業不要のため、U列:完了、および記録カルテのLED化状況「全灯LED済」（ダッシュボード「案件終了・調査不要」）に自動反映されています。

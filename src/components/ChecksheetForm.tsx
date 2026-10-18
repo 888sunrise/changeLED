@@ -27,7 +27,7 @@ import {
   X,
   MapPin,
 } from 'lucide-react';
-import { HearingRecord, StoreRecord, getStoreKey } from '../types/hearing';
+import { HearingRecord, StoreRecord, getStoreKey, isSameStore } from '../types/hearing';
 import { PrintSheetModal } from './PrintSheetModal';
 
 const PREFECTURE_REGEX = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
@@ -114,11 +114,52 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   onStartNewHearing,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'not_required' | 'recontact'>('all');
+  const [filterRequirement, setFilterRequirement] = useState<'all' | 'required' | 'completed' | 'recontact' | 'not_required'>('all');
+  const [excludeCompleted, setExcludeCompleted] = useState<boolean>(false);
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<HearingRecord | null>(null);
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [recordsForPrint, setRecordsForPrint] = useState<HearingRecord[]>([]);
   const [recordToDelete, setRecordToDelete] = useState<HearingRecord | null>(null);
+
+  // Helper to match store record from stores master
+  const getMatchedStore = React.useCallback(
+    (r: HearingRecord): StoreRecord | undefined => {
+      if (!stores || stores.length === 0) return undefined;
+      const rStoreId = (r.storeId || '').trim().toLowerCase();
+      const rStoreName = (r.storeName || '').trim();
+      return stores.find((s) => {
+        if (rStoreId && s.storeCode && s.storeCode.trim().toLowerCase() === rStoreId) return true;
+        if (rStoreName && s.storeName && s.storeName.trim() === rStoreName) return true;
+        if (isSameStore({ storeCode: s.storeCode, storeName: s.storeName, no: s.no }, r)) return true;
+        return false;
+      });
+    },
+    [stores]
+  );
+
+  // Check if store survey is completed (either directly in record or from P列:回収済 in stores)
+  const checkIsDocCollected = React.useCallback(
+    (r: HearingRecord): boolean => {
+      if (r.surveyRequirement === 'completed') return true;
+      const matched = getMatchedStore(r);
+      return Boolean(matched && (matched.surveyDocCollection === '回収済' || Boolean(matched.surveyDocDate)));
+    },
+    [getMatchedStore]
+  );
+
+  // Check if store is out of scope / all LED (from record or from P列:対象外 / 全灯LED in stores)
+  const checkIsOutOfScope = React.useCallback(
+    (r: HearingRecord): boolean => {
+      if (r.surveyRequirement === 'not_required' || r.ledStatus === 'all_led') return true;
+      const matched = getMatchedStore(r);
+      return Boolean(
+        matched &&
+          (matched.surveyDocCollection === '対象外' ||
+            Boolean(matched.remarks1 && matched.remarks1.includes('全灯LED')))
+      );
+    },
+    [getMatchedStore]
+  );
 
   // Multi-selection handlers
   const handleToggleSelect = (id: string) => {
@@ -158,7 +199,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
   // Recontact record condition (only active recontacts, excluding completed ones)
   const isRecontactRecord = (r: HearingRecord) => {
     if (r.status === 'completed' || r.callStatus === '完了') return false;
-    if (r.surveyRequirement === 'required' || r.surveyRequirement === 'not_required') return false;
+    if (r.surveyRequirement === 'required' || r.surveyRequirement === 'not_required' || r.surveyRequirement === 'completed') return false;
     return Boolean(
       r.callbackScheduledAt ||
       r.status === 'follow_up_needed' ||
@@ -178,8 +219,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
     const res: HearingRecord[] = [];
     // Sort so completed / all_led records take precedence, then newest timestamp
     const sorted = [...records].sort((a, b) => {
-      const aComp = (a.status === 'completed' || a.ledStatus === 'all_led') ? 1 : 0;
-      const bComp = (b.status === 'completed' || b.ledStatus === 'all_led') ? 1 : 0;
+      const aComp = (a.status === 'completed' || a.ledStatus === 'all_led' || a.surveyRequirement === 'completed') ? 1 : 0;
+      const bComp = (b.status === 'completed' || b.ledStatus === 'all_led' || b.surveyRequirement === 'completed') ? 1 : 0;
       if (aComp !== bComp) return bComp - aComp;
       return (b.timestamp || '').localeCompare(a.timestamp || '');
     });
@@ -196,26 +237,43 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
 
   // Dashboard Metrics Calculation
   const totalCount = displayRecords.length;
-  const requiredCount = displayRecords.filter((r) => r.surveyRequirement === 'required').length;
-  const recontactCount = displayRecords.filter(isRecontactRecord).length;
-  const notRequiredCount = displayRecords.filter((r) => r.surveyRequirement === 'not_required').length;
+  const completedCount = displayRecords.filter(checkIsDocCollected).length;
+  const notRequiredCount = displayRecords.filter(checkIsOutOfScope).length;
+  const requiredCount = displayRecords.filter(
+    (r) => !checkIsDocCollected(r) && !checkIsOutOfScope(r) && r.surveyRequirement === 'required'
+  ).length;
+  const recontactCount = displayRecords.filter(
+    (r) => !checkIsDocCollected(r) && !checkIsOutOfScope(r) && isRecontactRecord(r)
+  ).length;
 
   const requiredPct = totalCount > 0 ? ((requiredCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
+  const completedPct = totalCount > 0 ? ((completedCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
   const recontactPct = totalCount > 0 ? ((recontactCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
   const notRequiredPct = totalCount > 0 ? ((notRequiredCount / totalCount) * 100).toFixed(1).replace(/\.0$/, '') : '0';
 
   const requiredNum = totalCount > 0 ? (requiredCount / totalCount) * 100 : 0;
+  const completedNum = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const recontactNum = totalCount > 0 ? (recontactCount / totalCount) * 100 : 0;
   const notRequiredNum = totalCount > 0 ? (notRequiredCount / totalCount) * 100 : 0;
 
   // Filtered list
   const filteredRecords = displayRecords.filter((r) => {
+    const isCollected = checkIsDocCollected(r);
+    const isOut = checkIsOutOfScope(r);
+
+    // 要望: 完了・対象外を除外チェックがONの場合、調査完了および案件終了（対象外）を除外
+    if (excludeCompleted && (isCollected || isOut)) {
+      return false;
+    }
+
     if (filterRequirement === 'required') {
-      if (r.surveyRequirement !== 'required') return false;
+      if (isCollected || isOut || r.surveyRequirement !== 'required') return false;
+    } else if (filterRequirement === 'completed') {
+      if (!isCollected) return false;
     } else if (filterRequirement === 'not_required') {
-      if (r.surveyRequirement !== 'not_required') return false;
+      if (!isOut) return false;
     } else if (filterRequirement === 'recontact') {
-      if (!isRecontactRecord(r)) return false;
+      if (isCollected || isOut || !isRecontactRecord(r)) return false;
     }
 
     if (!searchQuery.trim()) return true;
@@ -232,6 +290,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
       (r.notes && r.notes.toLowerCase().includes(q)) ||
       (r.callStatus && r.callStatus.toLowerCase().includes(q)) ||
       (r.callbackScheduledAt && r.callbackScheduledAt.toLowerCase().includes(q)) ||
+      (isCollected && ('調査完了'.includes(q) || '回収済'.includes(q))) ||
+      (isOut && ('対象外'.includes(q) || '不要'.includes(q))) ||
       // 住所・都道府県検索（裏で検索）
       (addressInfo.fullAddress && addressInfo.fullAddress.toLowerCase().includes(q)) ||
       (addressInfo.prefecture && addressInfo.prefecture.toLowerCase().includes(q)) ||
@@ -300,7 +360,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
         `"${r.ledStatus === 'all_led' ? '全灯LED済' : r.ledStatus === 'partial_led' ? '一部未LED' : '未着手'}"`,
         `"${r.partialAreas || ''}"`,
         `"${r.locationCategory === 'builtin' ? 'ビルトイン' : r.locationCategory === 'foodcourt' ? 'フードコート' : r.locationCategory === 'freesta' ? 'ロードサイド' : '未特定'}"`,
-        `"${r.surveyRequirement === 'not_required' ? '不要(案件完了)' : '要訪問調査'}"`,
+        `"${checkIsDocCollected(r) ? '調査完了' : checkIsOutOfScope(r) ? '不要(案件完了)' : r.surveyRequirement === 'required' ? '要訪問調査' : r.callStatus || '未確定'}"`,
         `"${r.visitPeriodStart && r.visitPeriodEnd ? `${r.visitPeriodStart}〜${r.visitPeriodEnd}` : r.preferredDate1 || ''}"`,
         `"${r.preferredTimeSlot1 || ''}"`,
         `"${r.preferredTimeSlot2 || ''}"`,
@@ -418,8 +478,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
           </div>
         </div>
 
-        {/* 4 Dashboard Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* 5 Dashboard Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Card 1: すべて */}
           <button
             type="button"
@@ -482,11 +542,45 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             <div className={`mt-2 text-[11px] leading-tight truncate ${
               filterRequirement === 'required' ? 'text-blue-100' : 'text-blue-700'
             }`}>
-              一部未LED・蛍光灯残存店舗
+              一部未LED・調査待ち店舗
             </div>
           </button>
 
-          {/* Card 3: 再連絡 */}
+          {/* Card 3: 調査完了 */}
+          <button
+            type="button"
+            onClick={() => setFilterRequirement('completed')}
+            className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden ${
+              filterRequirement === 'completed'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
+                : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-slate-800 border-emerald-200 hover:border-emerald-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold ${filterRequirement === 'completed' ? 'text-emerald-100' : 'text-emerald-900'}`}>
+                調査完了
+              </span>
+              <CheckCircle2 className={`w-4 h-4 ${filterRequirement === 'completed' ? 'text-emerald-200' : 'text-emerald-600'}`} />
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-black font-mono tracking-tight ${filterRequirement === 'completed' ? 'text-white' : 'text-emerald-950'}`}>
+                {completedCount}
+              </span>
+              <span className={`text-xs ${filterRequirement === 'completed' ? 'text-emerald-100' : 'text-emerald-700'}`}>件</span>
+              <span className={`text-xs font-black ml-auto font-mono px-1.5 py-0.5 rounded ${
+                filterRequirement === 'completed' ? 'bg-white/20 text-white' : 'bg-emerald-200 text-emerald-900'
+              }`}>
+                {completedPct}%
+              </span>
+            </div>
+            <div className={`mt-2 text-[11px] leading-tight truncate ${
+              filterRequirement === 'completed' ? 'text-emerald-100' : 'text-emerald-800'
+            }`}>
+              P列:回収済・現地調査完了
+            </div>
+          </button>
+
+          {/* Card 4: 再連絡 */}
           <button
             type="button"
             onClick={() => setFilterRequirement('recontact')}
@@ -520,37 +614,37 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             </div>
           </button>
 
-          {/* Card 4: 案件終了・調査不要 */}
+          {/* Card 5: 案件終了・調査不要 */}
           <button
             type="button"
             onClick={() => setFilterRequirement('not_required')}
             className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden ${
               filterRequirement === 'not_required'
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
-                : 'bg-emerald-50/60 hover:bg-emerald-100/70 text-slate-800 border-emerald-200 hover:border-emerald-300'
+                ? 'bg-slate-700 text-white border-slate-700 shadow-md ring-2 ring-slate-700/20'
+                : 'bg-slate-100/80 hover:bg-slate-200/80 text-slate-800 border-slate-300 hover:border-slate-400'
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-xs font-bold ${filterRequirement === 'not_required' ? 'text-emerald-100' : 'text-emerald-900'}`}>
-                案件終了・調査不要
+              <span className={`text-xs font-bold ${filterRequirement === 'not_required' ? 'text-slate-200' : 'text-slate-700'}`}>
+                案件終了・不要
               </span>
-              <CheckCircle2 className={`w-4 h-4 ${filterRequirement === 'not_required' ? 'text-emerald-200' : 'text-emerald-600'}`} />
+              <CheckCircle2 className={`w-4 h-4 ${filterRequirement === 'not_required' ? 'text-slate-300' : 'text-slate-600'}`} />
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className={`text-2xl font-black font-mono tracking-tight ${filterRequirement === 'not_required' ? 'text-white' : 'text-emerald-950'}`}>
+              <span className={`text-2xl font-black font-mono tracking-tight ${filterRequirement === 'not_required' ? 'text-white' : 'text-slate-900'}`}>
                 {notRequiredCount}
               </span>
-              <span className={`text-xs ${filterRequirement === 'not_required' ? 'text-emerald-100' : 'text-emerald-700'}`}>件</span>
+              <span className={`text-xs ${filterRequirement === 'not_required' ? 'text-slate-300' : 'text-slate-600'}`}>件</span>
               <span className={`text-xs font-black ml-auto font-mono px-1.5 py-0.5 rounded ${
-                filterRequirement === 'not_required' ? 'bg-white/20 text-white' : 'bg-emerald-200 text-emerald-900'
+                filterRequirement === 'not_required' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-800'
               }`}>
                 {notRequiredPct}%
               </span>
             </div>
             <div className={`mt-2 text-[11px] font-bold leading-tight truncate flex items-center gap-1 ${
-              filterRequirement === 'not_required' ? 'text-emerald-100' : 'text-emerald-700'
+              filterRequirement === 'not_required' ? 'text-slate-200' : 'text-slate-600'
             }`}>
-              <span>→ 案内終了</span>
+              <span>全灯LED済・P列対象外</span>
             </div>
           </button>
         </div>
@@ -565,12 +659,16 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                 <span>要訪問調査: <strong>{requiredPct}%</strong> ({requiredCount}件)</span>
               </span>
               <span className="flex items-center gap-1 text-slate-700">
+                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block"></span>
+                <span>調査完了: <strong>{completedPct}%</strong> ({completedCount}件)</span>
+              </span>
+              <span className="flex items-center gap-1 text-slate-700">
                 <span className="w-2.5 h-2.5 rounded-xs bg-amber-500 inline-block"></span>
                 <span>再連絡: <strong>{recontactPct}%</strong> ({recontactCount}件)</span>
               </span>
               <span className="flex items-center gap-1 text-slate-700">
-                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block"></span>
-                <span>案内終了: <strong>{notRequiredPct}%</strong> ({notRequiredCount}件)</span>
+                <span className="w-2.5 h-2.5 rounded-xs bg-slate-500 inline-block"></span>
+                <span>案件終了: <strong>{notRequiredPct}%</strong> ({notRequiredCount}件)</span>
               </span>
             </div>
           </div>
@@ -580,6 +678,13 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                 style={{ width: `${requiredNum}%` }}
                 className="bg-blue-500 h-full transition-all duration-300"
                 title={`要訪問調査: ${requiredCount}件 (${requiredPct}%)`}
+              />
+            )}
+            {completedNum > 0 && (
+              <div
+                style={{ width: `${completedNum}%` }}
+                className="bg-emerald-500 h-full transition-all duration-300"
+                title={`調査完了: ${completedCount}件 (${completedPct}%)`}
               />
             )}
             {recontactNum > 0 && (
@@ -592,8 +697,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             {notRequiredNum > 0 && (
               <div
                 style={{ width: `${notRequiredNum}%` }}
-                className="bg-emerald-500 h-full transition-all duration-300"
-                title={`案件終了・案内終了: ${notRequiredCount}件 (${notRequiredPct}%)`}
+                className="bg-slate-500 h-full transition-all duration-300"
+                title={`案件終了・不要: ${notRequiredCount}件 (${notRequiredPct}%)`}
               />
             )}
           </div>
@@ -625,6 +730,16 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             要訪問調査 ({requiredCount})
           </button>
           <button
+            onClick={() => setFilterRequirement('completed')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+              filterRequirement === 'completed'
+                ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            調査完了 ({completedCount})
+          </button>
+          <button
             onClick={() => setFilterRequirement('recontact')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               filterRequirement === 'recontact'
@@ -638,7 +753,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
             onClick={() => setFilterRequirement('not_required')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               filterRequirement === 'not_required'
-                ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                ? 'bg-slate-700 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -646,13 +761,31 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
           </button>
         </div>
 
-        {/* Search & Bulk Action */}
+        {/* Search & Bulk Action & Exclude Completed Checkbox */}
         <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
-          <div className="relative w-full sm:w-64">
+          {/* 要望: 完了・対象外を除外チェックボックス */}
+          <label
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors border select-none ${
+              excludeCompleted
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-400'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+            title="調査完了および案件終了（対象外）の店舗を記録カルテから除外して表示"
+          >
+            <input
+              type="checkbox"
+              checked={excludeCompleted}
+              onChange={(e) => setExcludeCompleted(e.target.checked)}
+              className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300 cursor-pointer"
+            />
+            <span>完了・対象外を除外</span>
+          </label>
+
+          <div className="relative w-full sm:w-60">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="店舗名・担当者・県/住所（例: 東京都）で検索..."
+              placeholder="店舗名・担当者・県/住所（例: 神奈川）で検索..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden transition-all"
@@ -782,17 +915,20 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                 </tr>
               ) : (
                 filteredRecords.map((r) => {
-                  const isDone = r.surveyRequirement === 'not_required';
+                  const isCollected = checkIsDocCollected(r);
+                  const isOut = checkIsOutOfScope(r);
                   const isSelected = selectedRecordIds.includes(r.id);
-                  const isAllLed = r.ledStatus === 'all_led' || r.surveyRequirement === 'not_required';
+                  const matched = getMatchedStore(r);
                   return (
                     <tr
                       key={r.id}
                       className={`transition-colors divide-x divide-slate-200/60 ${
                         isSelected
                           ? 'bg-blue-50/70 hover:bg-blue-100/60'
-                          : isAllLed
+                          : isOut
                           ? 'bg-slate-200/90 text-slate-700 hover:bg-slate-200'
+                          : isCollected
+                          ? 'bg-emerald-50/40 text-slate-800 hover:bg-emerald-100/30'
                           : 'bg-white hover:bg-slate-50/80'
                       }`}
                     >
@@ -812,16 +948,20 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
 
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-between gap-1.5">
-                          <div className={`font-bold ${isAllLed ? 'text-slate-800' : 'text-slate-900'}`}>{r.storeName}</div>
-                          {isAllLed && (
+                          <div className={`font-bold ${isOut ? 'text-slate-800' : isCollected ? 'text-emerald-950 font-black' : 'text-slate-900'}`}>{r.storeName}</div>
+                          {isCollected ? (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1 py-0.5 rounded font-bold whitespace-nowrap">
+                              調査完了
+                            </span>
+                          ) : isOut ? (
                             <span className="text-[10px] bg-slate-400/40 text-slate-800 px-1 py-0.5 rounded font-bold whitespace-nowrap">
                               完了
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                           {r.storeId && (
-                            <span className={`text-[11px] font-mono ${isAllLed ? 'text-slate-500 font-semibold' : 'text-slate-400'}`}>{r.storeId}</span>
+                            <span className={`text-[11px] font-mono ${isOut ? 'text-slate-500 font-semibold' : 'text-slate-400'}`}>{r.storeId}</span>
                           )}
                           {(() => {
                             const addr = getRecordAddress(r, stores);
@@ -829,7 +969,7 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                             return (
                               <span
                                 className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border transition-colors cursor-help ${
-                                  isAllLed ? 'text-slate-700 bg-slate-300/60 border-slate-300' : 'text-slate-600 bg-slate-100 hover:bg-slate-200 border-slate-200'
+                                  isOut ? 'text-slate-700 bg-slate-300/60 border-slate-300' : 'text-slate-600 bg-slate-100 hover:bg-slate-200 border-slate-200'
                                 }`}
                                 title={addr.fullAddress || addr.shortAddress}
                               >
@@ -842,8 +982,8 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className={`font-medium ${isAllLed ? 'text-slate-800' : 'text-slate-800'}`}>{r.contactPerson} 様</div>
-                        <div className={`text-[11px] ${isAllLed ? 'text-slate-500' : 'text-slate-400'}`}>{r.contactRole || '店長'}</div>
+                        <div className={`font-medium ${isOut ? 'text-slate-800' : 'text-slate-800'}`}>{r.contactPerson} 様</div>
+                        <div className={`text-[11px] ${isOut ? 'text-slate-500' : 'text-slate-400'}`}>{r.contactRole || '店長'}</div>
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -894,17 +1034,25 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
-                        {r.surveyRequirement === 'not_required' || r.ledStatus === 'all_led' ? (
+                        {isCollected ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>調査完了</span>
+                            </span>
+                            <span className="text-[10px] text-emerald-700 block font-medium">
+                              P列:回収済連動
+                            </span>
+                          </div>
+                        ) : isOut ? (
                           <div className="space-y-0.5">
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-300 text-slate-800 border border-slate-400/50">
                               <CheckCircle2 className="w-3.5 h-3.5 text-slate-700" />
                               <span>調査不要・案件終了</span>
                             </span>
-                            {(r.autoCompletedByDocScope || (r.notes && r.notes.includes('P列'))) && (
-                              <span className="text-[10px] text-slate-600 block">
-                                P列結果連動
-                              </span>
-                            )}
+                            <span className="text-[10px] text-slate-600 block">
+                              {matched?.surveyDocCollection === '対象外' || r.autoCompletedByDocScope ? 'P列:対象外連動' : '全灯LED済'}
+                            </span>
                           </div>
                         ) : r.surveyRequirement === 'required' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
@@ -935,11 +1083,23 @@ export const ChecksheetForm: React.FC<ChecksheetFormProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-xs">
-                        {r.surveyRequirement === 'pending' && r.callbackScheduledAt ? (
-                          <div className="font-semibold text-cyan-800 bg-cyan-50 px-2.5 py-1 rounded border border-cyan-200 inline-block">
-                            <span>📅 再連絡予約: {r.callbackScheduledAt}</span>
+                        {isCollected ? (
+                          <div className="space-y-0.5">
+                            <div className="font-bold text-emerald-800 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>
+                                {matched?.surveyConfirmedDate || matched?.surveyDate
+                                  ? `調査完了日: ${matched.surveyConfirmedDate || matched.surveyDate}`
+                                  : r.preferredDate1
+                                  ? `調査日: ${r.preferredDate1}`
+                                  : '現地調査完了'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-emerald-600 font-medium">
+                              資料回収済 (P列連動)
+                            </div>
                           </div>
-                        ) : r.surveyRequirement === 'not_required' || r.ledStatus === 'all_led' ? (
+                        ) : isOut ? (
                           <span className="text-slate-600 font-medium">訪問なし（案件終了）</span>
                         ) : (
                           <div>
