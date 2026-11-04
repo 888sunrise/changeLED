@@ -11,6 +11,7 @@ import { FlowchartView } from './components/FlowchartView';
 import { FullScriptManual } from './components/FullScriptManual';
 import { ChecksheetForm } from './components/ChecksheetForm';
 import { PostVisitCallNavigator } from './components/PostVisitCallNavigator';
+import { StatusDashboard } from './components/StatusDashboard';
 import { INITIAL_SAMPLE_RECORDS } from './data/sampleRecords';
 import { INITIAL_STORE_RECORDS } from './data/sampleStores';
 import { HearingRecord, StoreRecord, getHearingRecordId, isSameStore, getStoreKey } from './types/hearing';
@@ -33,7 +34,7 @@ const STORAGE_KEY = 'led_hearing_records_v1';
 const STORE_STORAGE_KEY = 'led_stores_records_v2';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'ledger' | 'simulator' | 'post_visit' | 'flowchart' | 'scripts' | 'checksheet'>('checksheet');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'ledger' | 'simulator' | 'post_visit' | 'flowchart' | 'scripts' | 'checksheet'>('dashboard');
 
   // Stores (A〜U columns) - Cloud Firestore is master
   const [stores, setStores] = useState<StoreRecord[]>(() => {
@@ -905,6 +906,18 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        {activeTab === 'dashboard' && (
+          <StatusDashboard
+            stores={stores}
+            records={records}
+            onSelectStoreForCall={handleSelectStoreForCall}
+            onSelectStoreForPostVisit={handleSelectStoreForPostVisit}
+            onGoToLedger={() => setActiveTab('ledger')}
+            onGoToCall={() => setActiveTab('simulator')}
+            onGoToPostVisit={() => setActiveTab('post_visit')}
+          />
+        )}
+
         {activeTab === 'ledger' && (
           <StoreLedgerTable
             records={stores}

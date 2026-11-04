@@ -4,11 +4,11 @@
  */
 
 import React from 'react';
-import { Table, PhoneCall, BookOpen, GitFork, ClipboardCheck, FileCheck2 } from 'lucide-react';
+import { Table, PhoneCall, BookOpen, GitFork, ClipboardCheck, FileCheck2, LayoutDashboard } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'ledger' | 'simulator' | 'post_visit' | 'scripts' | 'flowchart' | 'checksheet';
-  setActiveTab: (tab: 'ledger' | 'simulator' | 'post_visit' | 'scripts' | 'flowchart' | 'checksheet') => void;
+  activeTab: 'dashboard' | 'ledger' | 'simulator' | 'post_visit' | 'scripts' | 'flowchart' | 'checksheet';
+  setActiveTab: (tab: 'dashboard' | 'ledger' | 'simulator' | 'post_visit' | 'scripts' | 'flowchart' | 'checksheet') => void;
   onNewCall: () => void;
   selectedStoreName?: string;
 }
@@ -67,6 +67,18 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Tier 2 (下段ナビゲーション): Navigation Tabs with full horizontal width */}
         <nav className="flex items-center gap-1 sm:gap-2 h-11 overflow-x-auto scrollbar-none py-1">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-pink-100 text-pink-900 font-bold border border-pink-300 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <LayoutDashboard className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-pink-600' : 'text-slate-500'}`} />
+            <span>ダッシュボード</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('checksheet')}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
